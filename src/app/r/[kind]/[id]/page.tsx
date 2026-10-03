@@ -35,13 +35,14 @@ async function origin(): Promise<URL> {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { kind, id } = await params;
   const r = await load(kind, id);
-  if (!r) return { title: "Receipt not found · Clearmark", robots: { index: false } };
+  if (!r) return { title: "Receipt not found", robots: { index: false } };
   const what = r.kind === "refund" ? "Refund sent" : r.kind === "payout" ? "Payout sent" : "Payment received";
   const title = r.publicAmounts ? `${r.title} · ${r.merchantName}` : `${what} · ${r.merchantName}`;
   const description = `${r.settled}. Proof receipt on Arc${r.source === "demo" ? " (simulated demo payment)" : ""}, verifiable by anyone. Invoice with Clearmark.`;
   return {
     metadataBase: await origin(),
-    title: `${title} · Clearmark`,
+    title: { absolute: `${title} · Clearmark` },
+    alternates: { canonical: `/r/${kind}/${id}` },
     description,
     robots: { index: false },
     openGraph: { title, description, type: "website", siteName: "Clearmark" },
