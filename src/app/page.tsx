@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { sessionAddress } from "@/lib/auth";
 import { Brand } from "@/components/Brand";
 import { SignIn } from "@/components/SignIn";
-import { IconBolt, IconHistory, IconReceipt, IconShield } from "@/components/Icons";
+import { IconBolt, IconClock, IconHistory, IconInvoices, IconReceipt, IconShield, IconWallet } from "@/components/Icons";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,11 @@ const TICKER = [
   ["s-under", "UNDERPAID", "INV-10044", "200.00"],
   ["s-dup", "DUPLICATE", "INV-10042", "250.00"],
   ["s-paid", "PAID · WITHIN TOLERANCE", "INV-10046", "249.70"],
+  ["s-paid", "PAID · EARLY DISCOUNT", "INV-10047", "245.00"],
+  ["s-paid", "PAID OUT", "3 collaborators", "1,000.00"],
 ] as const;
+
+const CHAINS = ["Base", "Ethereum", "Arbitrum", "OP", "Avalanche", "Polygon", "Unichain", "Linea"];
 
 const HEAD = ["Every", "USDC", "payment,"];
 
@@ -55,7 +59,8 @@ export default async function Home() {
           </h1>
           <p className="lede">
             Send an invoice, your customer pays from any wallet, and every transfer lands on the right invoice with a status a
-            human can read. Clearmark never holds your funds: payments go straight to your wallet.
+            human can read. Bill in USDC or euros, take payment from any chain, and split it with your team in one click.
+            Clearmark never holds your funds: payments go straight to your wallet.
           </p>
           <div className="cta">
             <div className="row" style={{ marginTop: 30, alignItems: "flex-start" }}>
@@ -113,7 +118,7 @@ export default async function Home() {
 
       <section className="stats reveal">
         <div className="card"><b className="grad-text">&lt;1s</b><span>Arc finality, so a payment is matched as it lands</span></div>
-        <div className="card"><b className="grad-text">7</b><span>Reconciliation outcomes handled automatically</span></div>
+        <div className="card"><b className="grad-text">9</b><span>Chains your customers can pay from, settling on Arc</span></div>
         <div className="card"><b className="grad-text">0</b><span>Custody. Funds go straight to your wallet</span></div>
         <div className="card"><b className="grad-text">100%</b><span>Of payments and refunds get a verifiable receipt</span></div>
       </section>
@@ -162,10 +167,86 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="reveal" style={{ marginTop: 96 }}>
+        <div className="sec-h">
+          <span className="eyebrow">New in Clearmark</span>
+          <h2>
+            Get paid faster, in more ways, <span className="grad-text">and share it.</span>
+          </h2>
+        </div>
+        <div className="bento">
+          <div className="card b-stamp">
+            <div className="f-ico"><IconBolt /></div>
+            <h3>Settled Stamp</h3>
+            <p>Every receipt shows how fast the money landed. Share the link and it unfurls as a branded card in WhatsApp, X or Slack. You choose whether amounts show.</p>
+            <div className="demo">
+              <div className="mini-receipt">
+                <div><span className="faint">Proof receipt</span><b>250.00 USDC received</b></div>
+                <span className="mini-seal">PAID</span>
+              </div>
+              <span className="settled" style={{ margin: 0 }}><span className="settled-dot" />Settled in 0.73s · final</span>
+            </div>
+          </div>
+          <div className="card b-terms">
+            <div className="f-ico"><IconClock /></div>
+            <h3>Smart Terms</h3>
+            <p>Offer 2% off for paying early and a fee for paying late. The checkout shows the live price and a countdown, and Clearmark settles at the price that applied.</p>
+            <div className="demo">
+              <div className="price-flip">
+                <s>250.00</s>
+                <b>245.00</b>
+                <span className="mono">USDC</span>
+              </div>
+              <span className="count-pill">Discount ends in 2d 14h 06m</span>
+            </div>
+          </div>
+          <div className="card b-chains">
+            <div className="f-ico"><IconWallet /></div>
+            <h3>Pay from any chain</h3>
+            <p>Customers pay with USDC on eight other networks. Circle&apos;s bridge carries it to Arc, then it pays the invoice with its fingerprint, so it still matches automatically.</p>
+            <div className="demo chain-flow">
+              <div className="chain-cloud">
+                {CHAINS.map((c, i) => (
+                  <span key={c} style={{ animationDelay: `${i * 0.35}s` }}>{c}</span>
+                ))}
+              </div>
+              <div className="flow-line"><i /></div>
+              <span className="arc-node">Arc</span>
+            </div>
+          </div>
+          <div className="card b-splits">
+            <div className="f-ico"><IconInvoices /></div>
+            <h3>Payday Splits</h3>
+            <p>Name your collaborators and their share. When the invoice is paid, one approval pays everyone from your wallet, and each person gets their own receipt.</p>
+            <div className="demo">
+              <div className="split-bar">
+                <i style={{ flex: 57.5 }}><span>You 57.5%</span></i>
+                <i style={{ flex: 30 }}><span>Ana 30%</span></i>
+                <i style={{ flex: 12.5 }}><span>Bo</span></i>
+              </div>
+              <span className="faint mono" style={{ fontSize: 11.5 }}>3 payouts · 1 transaction · 0 custody</span>
+            </div>
+          </div>
+          <div className="card b-euro">
+            <div className="f-ico"><IconReceipt /></div>
+            <h3>Get paid in euros</h3>
+            <p>Send euro invoices. Customers pay in EURC, or in USDC at a rate locked for 15 minutes. The receipt shows both amounts and the rate, and you can convert to EURC in one click.</p>
+            <div className="demo">
+              <div className="fx-pair">
+                <div><b>460.00</b><span>EUR invoiced</span></div>
+                <em>=</em>
+                <div><b>500.00</b><span>USDC paid</span></div>
+              </div>
+              <span className="faint mono" style={{ fontSize: 11.5 }}>1 USDC = 0.9200 EUR · rate locked at checkout</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="cta-band glow-edge reveal card">
         <div className="f-ico" style={{ marginBottom: 0 }}><IconBolt /></div>
         <h2 style={{ fontSize: "clamp(26px,3.4vw,38px)" }}>
-          Get paid in USDC. <span className="grad-text">Know it’s matched.</span>
+          Get paid in USDC or euros. <span className="grad-text">Know it’s matched.</span>
         </h2>
         <p className="muted" style={{ maxWidth: 520 }}>Sign in with a free wallet signature and send your first invoice in under a minute.</p>
         <SignIn label="Launch the app" />
