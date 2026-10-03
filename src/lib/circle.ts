@@ -2,9 +2,10 @@
 // Circle App Kit pieces, loaded only when a payer or merchant uses them (they are large).
 //   Bridge Kit: move USDC from another chain to the payer's own wallet on Arc (CCTP v2).
 //   Swap Kit:   convert USDC to EURC on Arc from the merchant's own wallet.
-// Both run against the user's injected wallet; Clearmark never holds keys or funds.
+// Both run against the user's connected wallet; Clearmark never holds keys or funds.
 
 import type { Hex } from "./types";
+import { walletProvider } from "./wallet";
 
 /** Testnets the payer can bring USDC from. Names are Bridge Kit chain identifiers. */
 export const SOURCE_CHAINS = [
@@ -20,9 +21,9 @@ export const SOURCE_CHAINS = [
 export type SourceChain = (typeof SOURCE_CHAINS)[number]["id"];
 
 async function adapter() {
-  if (!window.ethereum) throw new Error("No wallet found. Open this link in a browser with MetaMask or Rabby.");
+  const provider = walletProvider();
   const { createViemAdapterFromProvider } = await import("@circle-fin/adapter-viem-v2");
-  return createViemAdapterFromProvider({ provider: window.ethereum, capabilities: { addressContext: "user-controlled" } });
+  return createViemAdapterFromProvider({ provider, capabilities: { addressContext: "user-controlled" } });
 }
 
 const usd = (units: bigint) => (Number(units) / 1e6).toFixed(6).replace(/\.?0+$/, "");

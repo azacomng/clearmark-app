@@ -8,11 +8,13 @@ import { fmt } from "@/lib/money";
 import type { InvoiceView } from "@/lib/service";
 import type { Payout } from "@/lib/types";
 import { connect, friendlyError, sendBatch, waitForTx } from "@/lib/wallet";
+import { useConnectWallet } from "./WalletProvider";
 
 /** Payday Splits: preview the shares, then pay every collaborator in one batch from the merchant's wallet. */
 export function PayoutCard({ inv, onDone }: { inv: InvoiceView; onDone: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const connectWallet = useConnectWallet();
   const plan = inv.payoutPlan;
   if (!plan || inv.splits.length === 0) return null;
   const payout: Payout | undefined = inv.payouts[0];
@@ -38,6 +40,7 @@ export function PayoutCard({ inv, onDone }: { inv: InvoiceView; onDone: () => vo
   const send = async () => {
     if (!payout) return;
     if (payout.source === "demo") return api(`/api/payouts/${payout.id}`, { method: "POST", json: { action: "simulate" } });
+    await connectWallet();
     const account = await connect();
     if (account !== inv.merchant.toLowerCase()) throw new Error(`Switch your wallet to ${shortHex(inv.merchant)}, the merchant wallet.`);
     const hash = await sendBatch(account, payout.token, payout.lines.map((l) => ({ to: l.address, amount: BigInt(l.amount) })));

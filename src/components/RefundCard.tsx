@@ -6,11 +6,13 @@ import { api } from "@/lib/client";
 import { fmt } from "@/lib/money";
 import type { Hex, Refund } from "@/lib/types";
 import { connect, friendlyError, sendWithMemo, signText, waitForTx } from "@/lib/wallet";
+import { useConnectWallet } from "./WalletProvider";
 
 /** A refund that hasn't been sent yet: approve it (if over the limit), send it from the wallet, or cancel. */
 export function RefundCard({ refund: r, merchant, onDone }: { refund: Refund; merchant: string; onDone: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const connectWallet = useConnectWallet();
   const post = (path: string, json: unknown) => api(path, { method: "POST", json });
 
   async function run(key: string, fn: () => Promise<unknown>) {
@@ -27,6 +29,7 @@ export function RefundCard({ refund: r, merchant, onDone }: { refund: Refund; me
   }
 
   async function merchantAccount() {
+    await connectWallet();
     const account = await connect();
     if (account !== merchant.toLowerCase()) throw new Error(`Switch your wallet to ${shortHex(merchant)}, the merchant wallet.`);
     return account;

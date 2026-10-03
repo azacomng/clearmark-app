@@ -3,21 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
-import { connect, ensureArcTestnet, friendlyError, hasWallet, signText } from "@/lib/wallet";
+import { connect, ensureArcTestnet, friendlyError, signText } from "@/lib/wallet";
+import { useConnectWallet } from "./WalletProvider";
 
 export function SignIn({ label = "Sign in with wallet", primary = true }: { label?: string; primary?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const connectWallet = useConnectWallet();
 
   async function go() {
     setErr(null);
-    if (!hasWallet()) {
-      setErr("No wallet found in this browser. Install MetaMask or Rabby, then try again.");
-      return;
-    }
     setBusy(true);
     try {
+      await connectWallet();
       const address = await connect();
       await ensureArcTestnet().catch(() => {}); // signing works on any network; payments switch later
       const { nonce, message } = await api<{ nonce: string; message: string }>("/api/auth/nonce", { method: "POST", json: { address } });

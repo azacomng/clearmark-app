@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fx } from "@/components/Fx";
+import { WalletProvider } from "@/components/WalletProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <Fx />
-        {children}
+        <WalletProvider>{children}</WalletProvider>
       </body>
     </html>
   );

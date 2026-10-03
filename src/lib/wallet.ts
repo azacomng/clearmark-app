@@ -1,5 +1,6 @@
 "use client";
-// Browser wallet helpers (MetaMask, Rabby, any injected EIP-1193 wallet). Keys never leave the wallet.
+// Browser wallet helpers. The wallet is picked and connected with ConnectKit (components/WalletProvider);
+// these helpers then talk to that wallet's EIP-1193 provider. Keys never leave the wallet.
 
 import {
   createPublicClient,
@@ -32,14 +33,24 @@ declare global {
 
 export const browserClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
-export function hasWallet() {
-  return typeof window !== "undefined" && !!window.ethereum;
+let active: EIP1193Provider | null = null;
+
+/** Set by the ConnectKit bridge whenever the connected wallet changes. */
+export function setActiveProvider(p: EIP1193Provider | null) {
+  active = p;
 }
 
-function provider(): EIP1193Provider {
-  if (!window.ethereum) throw new Error("No wallet found. Install MetaMask or Rabby to continue.");
-  return window.ethereum;
+export function hasWallet() {
+  return !!active || (typeof window !== "undefined" && !!window.ethereum);
 }
+
+/** The connected wallet's provider (ConnectKit), falling back to the injected one. */
+export function walletProvider(): EIP1193Provider {
+  const p = active ?? (typeof window !== "undefined" ? window.ethereum : undefined);
+  if (!p) throw new Error("No wallet connected. Connect a wallet to continue.");
+  return p;
+}
+const provider = walletProvider;
 
 export async function connect(): Promise<Hex> {
   const [a] = (await provider().request({ method: "eth_requestAccounts" })) as Hex[];

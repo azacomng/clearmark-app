@@ -7,11 +7,13 @@ import { swapFeeBps, swapUsdcToEurc } from "@/lib/circle";
 import { fmt } from "@/lib/money";
 import type { InvoiceView } from "@/lib/service";
 import { connect, friendlyError, waitForTx } from "@/lib/wallet";
+import { useConnectWallet } from "./WalletProvider";
 
 /** EUR invoices paid in USDC: convert the USDC to EURC with Circle's Swap Kit, from the merchant's wallet. */
 export function ConvertCard({ inv, onDone }: { inv: InvoiceView; onDone: () => void }) {
   const [step, setStep] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const connectWallet = useConnectWallet();
   const left = BigInt(inv.unconvertedUsdc);
   const done = inv.conversions ?? [];
   if (inv.currency !== "EUR" || (left === 0n && done.length === 0)) return null;
@@ -21,6 +23,7 @@ export function ConvertCard({ inv, onDone }: { inv: InvoiceView; onDone: () => v
     setErr(null);
     try {
       setStep("Connecting wallet…");
+      await connectWallet();
       const account = await connect();
       if (account !== inv.merchant.toLowerCase()) throw new Error(`Switch your wallet to ${shortHex(inv.merchant)}, the merchant wallet.`);
       const { txHash } = await swapUsdcToEurc(left, setStep);

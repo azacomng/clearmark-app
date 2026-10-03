@@ -9,6 +9,7 @@ import { api, date, useApi, when } from "@/lib/client";
 import { fmt, toUnits } from "@/lib/money";
 import type { PublicInvoice } from "@/lib/service";
 import { connect, ensureArcTestnet, friendlyError, hasWallet, sendWithMemo, tokenBalance, waitForTx } from "@/lib/wallet";
+import { useConnectWallet } from "./WalletProvider";
 
 interface QuoteView {
   id: string;
@@ -70,6 +71,7 @@ export function Checkout({ id }: { id: string }) {
       live = false;
     };
   }, [wantsQuote, quoteStale, inv]);
+  const connectWallet = useConnectWallet();
 
   useEffect(() => {
     if (inv && !part) setPart(fmt(BigInt(inv.state.balance) / 2n || inv.state.balance, { min: 2 }).replace(/,/g, ""));
@@ -121,8 +123,8 @@ export function Checkout({ id }: { id: string }) {
     if (!inv || amount === null) return;
     setErr(null);
     try {
-      if (!hasWallet()) throw new Error("No wallet found. Open this link in a browser with MetaMask or Rabby.");
       setStep("connecting");
+      await connectWallet();
       const account = await connect();
       setStep("checking");
       const check = await api<PublicInvoice>(`/api/pay/${inv.id}?amount=${fmt(amount, { min: 0 }).replace(/,/g, "")}&from=${account}`);
