@@ -121,6 +121,16 @@ TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/
 TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/pay/<id> 250 full --untagged
 ```
 
+## Deploy to Vercel
+
+1. Import the repo and set the **Production Branch** to the branch that holds the app (`Enoxx` once PR #1 is merged).
+2. Add environment variables: `SESSION_SECRET` (any long random string), `CLEARMARK_PUBLIC_URL`
+   (your site URL, for share cards) and, for demo buttons, `CLEARMARK_DEMO=1`.
+3. In **Storage**, add **Upstash for Redis** and connect it to the project. It sets
+   `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (or `KV_REST_API_*`), and Clearmark stores its data
+   there. Without it the app still runs, but data lives in `/tmp` and disappears between requests.
+4. Redeploy.
+
 ## Not in v1 yet
 
 Gasless checkout (EIP-3009 relayer), recurring invoices, escrow, agent payments, team members (the
