@@ -24,6 +24,9 @@ const config = createConfig(
     walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
     appName: "Clearmark",
     enableAaveAccount: false,
+    // Coinbase Wallet's SDK otherwise loads an analytics script that pings cca-lite.coinbase.com; when an
+    // ad blocker stops it, the dev overlay shows "Failed to fetch". Clearmark doesn't need it.
+    coinbaseWalletPreference: { options: "all", telemetry: false },
     appDescription: "Every USDC payment, proven and matched.",
     ssr: true,
   }),
