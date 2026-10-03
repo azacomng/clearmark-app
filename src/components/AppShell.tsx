@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { api } from "@/lib/client";
 import { shortHex } from "@/lib/arc";
 import { Brand } from "./Brand";
+import { IconHistory, IconInvoices, IconLogout, IconPlus, IconReview, IconShield } from "./Icons";
 
 interface Sync {
   added: number;
@@ -24,11 +25,18 @@ const Ctx = createContext<{ tick: number; refresh: () => void; demo: boolean; re
 export const useShell = () => useContext(Ctx);
 
 const NAV = [
-  ["/app", "Invoices"],
-  ["/app/review", "Needs review"],
-  ["/app/history", "History"],
-  ["/app/limits", "Limits & settings"],
+  ["/app", "Invoices", IconInvoices],
+  ["/app/review", "Needs review", IconReview],
+  ["/app/history", "History", IconHistory],
+  ["/app/limits", "Limits & settings", IconShield],
 ] as const;
+
+/** Deterministic gradient avatar from a wallet address. */
+function avatarFor(address: string) {
+  const h = parseInt(address.slice(2, 8), 16) % 360;
+  const h2 = (h + 70 + (parseInt(address.slice(8, 10), 16) % 90)) % 360;
+  return `conic-gradient(from ${h}deg, hsl(${h} 90% 65%), hsl(${h2} 85% 60%), hsl(${(h2 + 120) % 360} 80% 62%), hsl(${h} 90% 65%))`;
+}
 
 export function AppShell({ address, name, demo, children }: { address: string; name: string; demo: boolean; children: React.ReactNode }) {
   const path = usePathname();
@@ -77,25 +85,34 @@ export function AppShell({ address, name, demo, children }: { address: string; n
       <div className="shell">
         <nav className="side" aria-label="Main">
           <Brand href="/app" />
-          {NAV.map(([href, label]) => (
+          <span className="nav-label">Workspace</span>
+          {NAV.map(([href, label, Icon]) => (
             <Link key={href} href={href} className={`nav ${isOn(href) ? "on" : ""}`}>
-              {label}
+              <Icon />
+              <span className="lbl">{label}</span>
               {href === "/app/review" && reviewCount > 0 ? <em>{reviewCount}</em> : null}
             </Link>
           ))}
-          <Link href="/app/invoices/new" className="btn primary sm" style={{ marginTop: 14 }}>
+          <Link href="/app/invoices/new" className="btn primary" style={{ marginTop: 16 }}>
+            <IconPlus />
             New invoice
           </Link>
           <div className="wallet">
             <span>Settlement wallet</span>
-            <b>{name}</b>
-            <span className="mono">{shortHex(address)}</span>
+            <div className="who">
+              <span className="avatar" style={{ background: avatarFor(address) }} aria-hidden="true" />
+              <div style={{ minWidth: 0 }}>
+                <b>{name}</b>
+                <span className="mono">{shortHex(address)}</span>
+              </div>
+            </div>
             <span className="sync" title={sync?.error ?? ""}>
               <i className={`dot ${sync?.error ? "err" : "live"}`} />
               {syncLabel}
             </span>
             <span className="chip testnet" style={{ justifySelf: "start" }}>Arc testnet{demo ? " · demo on" : ""}</span>
-            <button className="btn ghost sm" onClick={logout} style={{ justifySelf: "start", paddingInline: 0, border: 0 }}>
+            <button className="btn ghost sm" onClick={logout} style={{ justifySelf: "start", paddingInline: 0, border: 0, color: "var(--muted)" }}>
+              <IconLogout />
               Sign out
             </button>
           </div>

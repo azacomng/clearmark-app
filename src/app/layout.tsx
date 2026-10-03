@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Fx } from "@/components/Fx";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,7 +7,7 @@ export const metadata: Metadata = {
   description: "Every USDC payment, proven and matched. Invoice verification and automatic reconciliation on Arc.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#090D19" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#05060E" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,10 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <Fx />
+        {children}
+      </body>
     </html>
   );
 }
