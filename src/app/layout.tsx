@@ -1,11 +1,20 @@
 import type { Metadata, Viewport } from "next";
 import { Fx } from "@/components/Fx";
 import { WalletProvider } from "@/components/WalletProvider";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Clearmark",
-  description: "Every USDC payment, proven and matched. Invoice verification and automatic reconciliation on Arc.",
+  metadataBase: siteUrl(),
+  title: { default: `${SITE_NAME} · ${SITE_TAGLINE}`, template: `%s · ${SITE_NAME}` },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: ["USDC invoices", "EURC", "crypto invoicing", "payment reconciliation", "Arc", "Circle", "stablecoin payments", "onchain receipts"],
+  alternates: { canonical: "/" },
+  openGraph: { type: "website", siteName: SITE_NAME, title: `${SITE_NAME} · ${SITE_TAGLINE}`, description: SITE_DESCRIPTION, url: "/", locale: "en_US" },
+  twitter: { card: "summary_large_image", title: `${SITE_NAME} · ${SITE_TAGLINE}`, description: SITE_DESCRIPTION },
+  appleWebApp: { title: SITE_NAME, statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#05060E" };
