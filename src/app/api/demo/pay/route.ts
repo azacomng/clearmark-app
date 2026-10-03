@@ -36,6 +36,8 @@ export const POST = handle(async (req: Request) => {
       },
       now,
     );
+    // Simulated payments get a typical Arc settle time so the receipt stamp looks like the real thing.
+    if (p && p.settleMs == null) p.settleMs = 450 + Math.floor(Math.random() * 450);
     return { payment: p, invoice: publicInvoice(db, inv, now) };
   });
   return json({ ...out, receipt: out.payment ? `/r/p/${paymentKey(out.payment)}` : null });

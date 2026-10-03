@@ -28,6 +28,22 @@ export interface ReceiptData {
   related: { label: string; href: string }[];
   note: string | null;
   source: "chain" | "demo";
+  /** The stamp line, e.g. "Settled in 0.82s · final". Arc finality is deterministic, so "final" is literal. */
+  settled: string;
+  /** False when the merchant hides amounts on public share cards. */
+  publicAmounts: boolean;
+}
+
+export function settledLine(settleMs: number | null | undefined): string {
+  if (!settleMs) return "Final on Arc";
+  const s = settleMs / 1000;
+  return `Settled in ${s < 10 ? s.toFixed(2).replace(/0$/, "") : Math.round(s)}s · final`;
+}
+
+function termsNote(kind: string, price: string, amount: string): string {
+  if (kind === "early") return ` Early-pay discount applied: ${fmt(price)} instead of ${fmt(amount)} USDC.`;
+  if (kind === "late") return ` Paid after the due date, so the late fee applied: ${fmt(price)} USDC.`;
+  return "";
 }
 
 export function receiptData(db: Db, kind: string, key: string): ReceiptData {
@@ -60,9 +76,11 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       note: held
         ? `Held for review: ${p.hold!.detail}`
         : cls
-          ? `${CLASS_LABEL[cls]} on ${inv!.number}. Invoice is now ${st!.label}.`
+          ? `${CLASS_LABEL[cls]} on ${inv!.number}. Invoice is now ${st!.label}.${termsNote(st!.priceKind, st!.price, inv!.amount)}`
           : null,
       source: p.source,
+      settled: settledLine(p.settleMs),
+      publicAmounts: db.merchants[p.merchant]?.publicAmounts !== false,
     };
   }
   if (kind === "f") {
@@ -90,6 +108,8 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       related: p ? [{ label: `Original payment ${fmt(p.amount)} USDC`, href: `/r/p/${p.id.replace(":", "-")}` }] : [],
       note: `${reason}. Sent from the merchant's wallet to the original payer.`,
       source: r.source,
+      settled: settledLine(null),
+      publicAmounts: db.merchants[r.merchant]?.publicAmounts !== false,
     };
   }
   throw new LedgerError("Receipt not found", 404);

@@ -89,13 +89,19 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
       </div>
 
       <div className="bar" aria-hidden="true">
-        <i style={{ width: `${pct(st.counted, inv.amount)}%`, background: st.status === "underpaid" ? "var(--warn)" : st.status === "paid" ? "var(--ok)" : undefined }} />
+        <i style={{ width: `${pct(st.counted, st.price)}%`, background: st.status === "underpaid" ? "var(--warn)" : st.status === "paid" ? "var(--ok)" : undefined }} />
       </div>
       <div className="row mono faint" style={{ fontSize: 12, justifyContent: "space-between" }}>
         <span>Received {fmt(st.received)}</span>
         <span>{BigInt(st.balance) > 0n ? `Balance ${fmt(st.balance)}` : st.status === "void" ? "Void" : "Settled"}</span>
       </div>
 
+      {inv.termsLine ? (
+        <p className="faint" style={{ fontSize: 12.5 }}>
+          Terms: {inv.termsLine}
+          {st.priceKind !== "standard" && BigInt(st.balance) > 0n ? ` · price now ${fmt(st.price)} USDC` : ""}
+        </p>
+      ) : null}
       <div className="row">
         <span key={st.label} className={`stamp pop ${inv.pill}`}>{st.label}</span>
         <p className="muted" style={{ fontSize: 13, flex: "1 1 200px" }}>{explain(inv)}</p>
@@ -206,7 +212,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
         <div className="stack" style={{ gap: 8 }}>
           <span className="eyebrow" style={{ color: "var(--faint)" }}>Demo · simulate a customer payment</span>
           <div className="row">
-            <button className="btn sm" disabled={!!busy} onClick={() => simulate(fmt(inv.amount).replace(/,/g, ""))}>Exact {amt}</button>
+            <button className="btn sm" disabled={!!busy} onClick={() => simulate(fmt(BigInt(st.balance) > 0n ? st.balance : inv.amount).replace(/,/g, ""))}>Exact {fmt(BigInt(st.balance) > 0n ? st.balance : inv.amount)}</button>
             <button className="btn sm" disabled={!!busy} onClick={() => simulate((Number(inv.amount) * 0.8 / 1e6).toFixed(2))}>Short 80%</button>
             <button className="btn sm" disabled={!!busy} onClick={() => simulate((Number(inv.amount) * 1.2 / 1e6).toFixed(2))}>Over 120%</button>
             <button className="btn sm" disabled={!!busy} onClick={() => simulate((Number(inv.amount) / 2e6).toFixed(2), { intent: "part" })}>Half (split)</button>
@@ -235,7 +241,7 @@ function explain(inv: InvoiceView): string {
     case "open":
       return s.overdue ? "Overdue. No payment yet." : "Waiting for payment. Matching happens the moment it lands.";
     case "partial":
-      return `${fmt(s.counted)} of ${fmt(inv.amount)} received as part payments. Waiting for the rest.`;
+      return `${fmt(s.counted)} of ${fmt(s.price)} received as part payments. Waiting for the rest.`;
     case "underpaid":
       return `${fmt(s.balance)} USDC short. ${s.overdue ? "The due date has passed." : ""}`;
     case "overpaid":
@@ -248,13 +254,17 @@ function explain(inv: InvoiceView): string {
       return s.variant === "split"
         ? "Paid in parts, all matched to this invoice."
         : s.variant === "tolerance"
-          ? `Paid within your tolerance. Difference ${fmt((BigInt(s.counted) - BigInt(inv.amount)).toString())} USDC.`
+          ? `Paid within your tolerance. Difference ${fmt((BigInt(s.counted) - BigInt(s.price)).toString())} USDC.`
           : s.variant === "written_off"
             ? `Closed with ${fmt(s.writtenOff)} USDC written off.`
             : s.variant === "refunded"
               ? "Paid. Extra money was refunded to the payer."
               : s.variant === "credited"
                 ? "Paid. Extra money is held as customer credit."
+                : s.variant === "early"
+                  ? `Paid early, so the discount applied: ${fmt(s.price)} instead of ${fmt(inv.amount)} USDC.`
+                  : s.variant === "late"
+                    ? `Paid after the due date with the late fee: ${fmt(s.price)} USDC.`
                 : "Paid in full and matched by its onchain memo.";
   }
 }

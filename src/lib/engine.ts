@@ -12,6 +12,7 @@
 // part of a split invoice at checkout and the invoice is not yet overdue.
 
 import { absDiff, big, str, sum, type Units } from "./money";
+import { priceAt, type PriceKind } from "./terms";
 import type { Invoice, Payment } from "./types";
 
 export type PaymentClass =
@@ -25,7 +26,7 @@ export type PaymentClass =
   | "excess"; // arrived after the invoice was covered, a different amount
 
 export type InvoiceStatus = "open" | "partial" | "underpaid" | "paid" | "overpaid" | "duplicate" | "void";
-export type PaidVariant = null | "split" | "tolerance" | "written_off" | "refunded" | "credited";
+export type PaidVariant = null | "split" | "tolerance" | "written_off" | "refunded" | "credited" | "early" | "late";
 
 export interface ClassifiedPayment {
   id: string;
@@ -49,6 +50,9 @@ export interface InvoiceState {
   /** Unresolved duplicate amount still awaiting a refund or credit. */
   duplicateOpen: Units;
   writtenOff: Units;
+  /** The price that applies: locked at the settle time once covered, otherwise the price now. */
+  price: Units;
+  priceKind: PriceKind;
   overdue: boolean;
   payments: ClassifiedPayment[];
 }
@@ -67,10 +71,15 @@ export function sortPayments<T extends Pick<Payment, "blockNumber" | "logIndex" 
 }
 
 export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = new Date()): InvoiceState {
-  const A = big(invoice.amount);
   const T = big(invoice.tolerance);
-  const lower = A - T > 0n ? A - T : 0n;
-  const upper = A + T;
+  const bounds = (price: bigint) => ({ lower: price - T > 0n ? price - T : 0n, upper: price + T });
+  // With Smart Terms the price depends on when the invoice is settled. Until it is covered,
+  // each payment is judged against the price at its own settle time; once covered, the price
+  // is locked to the moment it was covered.
+  let A = priceAt(invoice, now).amount;
+  let { lower, upper } = bounds(A);
+  let priceKind: PriceKind = priceAt(invoice, now).kind;
+  let covered = false;
   const overdue = now.toISOString().slice(0, 10) > invoice.dueDate;
 
   const payments = sortPayments(allPayments.filter((p) => p.invoiceId === invoice.id && countsTowardInvoice(p)));
@@ -86,8 +95,14 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     const amt = big(p.amount);
     let cls: PaymentClass;
     let surplus = 0n;
-    if (countedN > 0 && counted >= lower) {
-      const isDup = absDiff(amt, A) <= T || seenAmounts.some((s) => s === amt);
+    if (!covered) {
+      const p0 = priceAt(invoice, p.timestamp);
+      A = p0.amount;
+      priceKind = p0.kind;
+      ({ lower, upper } = bounds(A));
+    }
+    if (covered) {
+      const isDup = absDiff(amt, A) <= T || absDiff(amt, big(invoice.amount)) <= T || seenAmounts.some((s) => s === amt);
       cls = isDup ? "duplicate" : "excess";
       surplus = amt;
       if (isDup) duplicateTotal += amt;
@@ -95,6 +110,7 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     } else {
       counted += amt;
       countedN += 1;
+      if (counted >= lower) covered = true;
       if (counted > upper) {
         cls = "over";
         surplus = counted - A;
@@ -108,6 +124,13 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     classified.push({ id: p.id, cls, amount: p.amount, surplus: str(surplus) });
   }
 
+  if (!covered) {
+    // Not settled yet: what is owed now is the price right now.
+    const pn = priceAt(invoice, now);
+    A = pn.amount;
+    priceKind = pn.kind;
+    ({ lower, upper } = bounds(A));
+  }
   const received = sum(payments.map((p) => big(p.amount)));
   const clsById = new Map(classified.map((c) => [c.id, c.cls]));
   const res = invoice.resolutions;
@@ -147,6 +170,8 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     const kinds = new Set(res.map((r) => r.kind));
     if (kinds.has("refund")) variant = "refunded";
     else if (kinds.has("credit")) variant = "credited";
+    else if (priceKind === "early") variant = "early";
+    else if (priceKind === "late") variant = "late";
     else if (countedN > 1) variant = "split";
     else if (counted !== A) variant = "tolerance";
   }
@@ -161,6 +186,8 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     excessOpen: str(excessOpen),
     duplicateOpen: str(duplicateOpen),
     writtenOff: str(writtenOff),
+    price: str(A),
+    priceKind,
     overdue: overdue && (status === "open" || status === "partial" || status === "underpaid"),
     payments: classified,
   };
@@ -188,6 +215,8 @@ export function label(status: InvoiceStatus, variant: PaidVariant): string {
     written_off: "PAID · WRITTEN OFF",
     refunded: "PAID · REFUNDED",
     credited: "PAID · CREDITED",
+    early: "PAID · EARLY DISCOUNT",
+    late: "PAID · WITH LATE FEE",
   }[variant];
 }
 

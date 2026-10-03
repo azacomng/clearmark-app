@@ -30,6 +30,18 @@ Plus the three v1 must-haves:
 - **Easy history**: one searchable timeline of money in and out with filters, monthly view and a CSV
   export that carries the tx hash and receipt link on every line.
 
+Growth features:
+
+- **Settled Stamp share cards**: every payment receipt carries "Settled in 0.8s · final" (measured
+  at checkout from the wallet to a final block; Arc finality is deterministic, so "final" is literal).
+  A shared receipt link unfurls as a branded preview card (`/r/…/opengraph-image`). Merchants can hide
+  amounts on share cards in Settings. Payer-facing pages carry an "Invoice with Clearmark" line.
+- **Smart Terms**: an optional early-pay discount (e.g. 2% within 3 days) and late fee after the due
+  date, off by default and stated on the invoice and the link. The checkout shows the live price and a
+  countdown. Reconciliation judges the invoice at the price that applied at the settle timestamp of the
+  payment that covered it (`src/lib/terms.ts`), so 245.00 paid on day 2 of a 250.00 invoice is
+  `PAID · EARLY DISCOUNT`, and 250.00 after the due date with a 1.5% fee is short by 3.75.
+
 ## How matching works
 
 Each invoice gets a fingerprint `memoId = keccak256("clearmark:v1:invoice:<id>")`. The checkout pays

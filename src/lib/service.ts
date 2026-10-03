@@ -17,6 +17,7 @@ import {
   type IncomingTransfer,
 } from "./ledger";
 import { checkoutCheck } from "./limits";
+import { earlyDeadline, termsLine } from "./terms";
 import { suggestMatches } from "./matching";
 import { big, fmt, str, sum } from "./money";
 import type { Db, Hex, Invoice, Payment, Refund } from "./types";
@@ -40,7 +41,7 @@ export async function signInMerchant(address: Hex) {
 
 export function invoiceView(db: Db, inv: Invoice, now = new Date()) {
   const state = invoiceState(db, inv, now);
-  return { ...inv, state, pill: pillClass(state.status) };
+  return { ...inv, state, pill: pillClass(state.status), termsLine: termsLine(inv), earlyDeadline: earlyDeadline(inv) };
 }
 export type InvoiceView = ReturnType<typeof invoiceView>;
 
@@ -226,10 +227,13 @@ export function publicInvoice(db: Db, inv: Invoice, now = new Date()) {
     tolerance: inv.tolerance,
     dueDate: inv.dueDate,
     allowSplit: inv.allowSplit,
+    terms: inv.terms ?? null,
+    termsLine: termsLine(inv),
+    earlyDeadline: earlyDeadline(inv),
     memoId: inv.memoId,
     voided: inv.voided,
     merchant: { address: m.address, name: m.name },
-    state: { status: st.status, label: st.label, balance: st.balance, received: st.received, pill: pillClass(st.status) },
+    state: { status: st.status, label: st.label, balance: st.balance, received: st.received, counted: st.counted, price: st.price, priceKind: st.priceKind, pill: pillClass(st.status) },
     checkout: { ok: check.ok, maxAmount: check.maxAmount === null ? null : str(check.maxAmount), reason: check.reason },
     payments,
     demo: DEMO,

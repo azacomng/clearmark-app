@@ -15,9 +15,10 @@ const RULES: { key: keyof Limits; title: string; help: string }[] = [
 const toInput = (u: string | null) => (u === null ? "" : fmt(u, { min: 0 }).replace(/,/g, ""));
 
 export default function LimitsPage() {
-  const { data, reload } = useApi<{ limits: Limits; name: string; receivedToday: string }>("/api/limits");
+  const { data, reload } = useApi<{ limits: Limits; name: string; publicAmounts: boolean; receivedToday: string }>("/api/limits");
   const [form, setForm] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
+  const [publicAmounts, setPublicAmounts] = useState(true);
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,6 +26,7 @@ export default function LimitsPage() {
     if (!data) return;
     setForm(Object.fromEntries(RULES.map((r) => [r.key, toInput(data.limits[r.key])])));
     setName(data.name);
+    setPublicAmounts(data.publicAmounts);
   }, [data]);
 
   async function save(e: React.FormEvent) {
@@ -32,7 +34,7 @@ export default function LimitsPage() {
     setBusy(true);
     setMsg(null);
     try {
-      await api("/api/limits", { method: "PUT", json: { name, limits: Object.fromEntries(RULES.map((r) => [r.key, form[r.key]?.trim() ? form[r.key].trim() : null])) } });
+      await api("/api/limits", { method: "PUT", json: { name, publicAmounts, limits: Object.fromEntries(RULES.map((r) => [r.key, form[r.key]?.trim() ? form[r.key].trim() : null])) } });
       setMsg({ kind: "ok", text: "Saved. New limits apply to the next payment." });
       reload();
     } catch (e) {
@@ -63,6 +65,16 @@ export default function LimitsPage() {
           </div>
           <input className="input" style={{ width: 240 }} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
         </div>
+        <div className="rule">
+          <div>
+            <b>Show amounts on share cards</b>
+            <p>When a receipt link is shared, the preview shows the amount. Turn this off to show only "Payment received" and the settled stamp. The receipt itself still shows the amount, since it's the proof.</p>
+          </div>
+          <label className="check" style={{ alignItems: "center" }}>
+            <input type="checkbox" checked={publicAmounts} onChange={(e) => setPublicAmounts(e.target.checked)} aria-label="Show amounts on share cards" />
+            <span>{publicAmounts ? "Shown" : "Hidden"}</span>
+          </label>
+        </div>
         {RULES.map((r) => (
           <div className="rule" key={r.key}>
             <div>
@@ -86,7 +98,7 @@ export default function LimitsPage() {
         </p>
         {msg ? <p className={`notice ${msg.kind}`}>{msg.text}</p> : null}
         <div className="row">
-          <button className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : null} Save limits</button>
+          <button className="btn primary" disabled={busy}>{busy ? <span className="spinner" /> : null} Save settings</button>
           <span className="faint" style={{ fontSize: 12.5 }}>Leave a box empty for no limit.</span>
         </div>
       </form>

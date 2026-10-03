@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { addressUrl, shortHex, txUrl } from "@/lib/arc";
 import { LedgerError } from "@/lib/ledger";
@@ -10,17 +11,48 @@ import { ReVerify } from "@/components/ReVerify";
 import { CopyLink } from "@/components/CopyLink";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Proof receipt · Clearmark", robots: { index: false } };
+type Props = { params: Promise<{ kind: string; id: string }> };
 
-export default async function Receipt({ params }: { params: Promise<{ kind: string; id: string }> }) {
-  const { kind, id } = await params;
-  let r;
+async function load(kind: string, id: string) {
   try {
-    r = receiptData(await read(), kind, id);
+    return receiptData(await read(), kind, id);
   } catch (e) {
-    if (e instanceof LedgerError) notFound();
+    if (e instanceof LedgerError) return null;
     throw e;
   }
+}
+
+/** Absolute site origin for link previews: CLEARMARK_PUBLIC_URL if set, else the request host. */
+async function origin(): Promise<URL> {
+  if (process.env.CLEARMARK_PUBLIC_URL) return new URL(process.env.CLEARMARK_PUBLIC_URL);
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return new URL(`${proto}://${host}`);
+}
+
+/** Rich link preview, so a shared proof link renders as a branded card in chat apps. */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { kind, id } = await params;
+  const r = await load(kind, id);
+  if (!r) return { title: "Receipt not found · Clearmark", robots: { index: false } };
+  const what = r.kind === "refund" ? "Refund sent" : "Payment received";
+  const title = r.publicAmounts ? `${r.title} · ${r.merchantName}` : `${what} · ${r.merchantName}`;
+  const description = `${r.settled}. Proof receipt on Arc${r.source === "demo" ? " (simulated demo payment)" : ""}, verifiable by anyone. Invoice with Clearmark.`;
+  return {
+    metadataBase: await origin(),
+    title: `${title} · Clearmark`,
+    description,
+    robots: { index: false },
+    openGraph: { title, description, type: "website", siteName: "Clearmark" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
+
+export default async function Receipt({ params }: Props) {
+  const { kind, id } = await params;
+  const r = await load(kind, id);
+  if (!r) notFound();
   const at = new Date(r.at);
   return (
     <div className="stage">
@@ -39,6 +71,13 @@ export default async function Receipt({ params }: { params: Promise<{ kind: stri
               CLEARMARK<b>{r.seal}</b>ARC TESTNET
             </div>
           </div>
+          {r.kind === "payment" ? (
+            <div className="settled" title="Arc finality is deterministic: once a payment is in a block it can't be reversed.">
+              <span className="settled-dot" />
+              {r.settled}
+              {r.source === "demo" ? <em> · simulated</em> : null}
+            </div>
+          ) : null}
           <div className="rc-grid">
             <div><span>{r.kind === "refund" ? "Refunded on" : "Paid on"}</span><b>{at.toUTCString().replace("GMT", "UTC")}</b></div>
             <div><span>{r.kind === "refund" ? "Reason" : "Matched by"}</span><b>{r.matchedBy}</b></div>
@@ -70,6 +109,9 @@ export default async function Receipt({ params }: { params: Promise<{ kind: stri
         <p className="faint" style={{ fontSize: 12 }}>
           Issued by Clearmark. Anyone with this link can check it against Arc testnet.
         </p>
+        <Link href="/" className="madewith">
+          Invoice with <b>Clearmark</b> · get paid in USDC, proven on Arc
+        </Link>
       </div>
     </div>
   );

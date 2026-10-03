@@ -8,6 +8,14 @@ import { fmt, toUnits } from "@/lib/money";
 import type { PublicInvoice } from "@/lib/service";
 import { connect, friendlyError, hasWallet, sendWithMemo, usdcBalance, waitForTx } from "@/lib/wallet";
 
+function countdown(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${String(sec).padStart(2, "0")}s`;
+  return `${m}m ${String(sec).padStart(2, "0")}s`;
+}
+
 type Step = "idle" | "connecting" | "checking" | "signing" | "confirming" | "done";
 
 export function Checkout({ id }: { id: string }) {
@@ -18,6 +26,16 @@ export function Checkout({ id }: { id: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [tx, setTx] = useState<string | null>(null);
+  const [settleMs, setSettleMs] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
+
+  // Smart Terms countdown: tick once a second while a discount window is open.
+  const deadline = inv?.earlyDeadline && inv.state.priceKind === "early" ? Date.parse(inv.earlyDeadline) : null;
+  useEffect(() => {
+    if (!deadline) return;
+    const t = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadline]);
 
   useEffect(() => {
     if (inv && !part) setPart(fmt(BigInt(inv.state.balance) / 2n || inv.state.balance, { min: 2 }).replace(/,/g, ""));
@@ -26,7 +44,11 @@ export function Checkout({ id }: { id: string }) {
   if (error) return <div className="co"><div className="co-body"><h2>Payment link not found</h2><p className="muted">{error}</p></div></div>;
   if (!inv) return <div className="co"><div className="co-body muted">Loading…</div></div>;
 
-  const balance = BigInt(inv.state.balance);
+  const left = deadline ? deadline - clock : null;
+  // In the last minute of a discount window, ask for the standard price: a payment that settles
+  // after the deadline is judged at the standard price, and we never want a payer caught short.
+  const closing = left !== null && left < 60_000;
+  const balance = closing ? BigInt(inv.amount) - BigInt(inv.state.counted) : BigInt(inv.state.balance);
   const settled = balance === 0n && inv.state.status !== "open";
   let amount: bigint | null = balance;
   let amountErr: string | null = null;
@@ -60,8 +82,11 @@ export function Checkout({ id }: { id: string }) {
       const hash = await sendWithMemo(account, inv.merchant.address, amount, inv.memoId, memoText({ inv: inv.number, pay: mode }));
       setTx(hash);
       setStep("confirming");
+      const t0 = performance.now();
       await waitForTx(hash);
-      const res = await api<{ receipts: string[] }>(`/api/pay/${inv.id}/confirm`, { method: "POST", json: { txHash: hash } });
+      const settleMs = Math.round(performance.now() - t0);
+      setSettleMs(settleMs);
+      const res = await api<{ receipts: string[] }>(`/api/pay/${inv.id}/confirm`, { method: "POST", json: { txHash: hash, settleMs } });
       setReceipt(res.receipts[0] ?? null);
       setStep("done");
       reload();
@@ -108,6 +133,7 @@ export function Checkout({ id }: { id: string }) {
           <div className="done">
             <div className="okcheck" />
             <h2>Payment verified</h2>
+            {settleMs ? <div className="settled" style={{ margin: 0 }}><span className="settled-dot" />Settled in {(settleMs / 1000).toFixed(2)}s · final</div> : null}
             <p className="muted">
               {inv.state.label === "PAID" || inv.state.status === "paid" ? `${inv.number} is paid.` : `${inv.number}: ${inv.state.label}.`} Your receipt is ready.
             </p>
@@ -129,8 +155,23 @@ export function Checkout({ id }: { id: string }) {
               <b>{fmt(mode === "full" ? balance : amount ?? 0n)}</b>
               <span>USDC · {inv.number} · due {date(inv.dueDate)}</span>
             </div>
+            {inv.state.priceKind === "early" && !closing && left !== null ? (
+              <div className="terms-live">
+                <span>
+                  Pay now and save <b>{fmt(BigInt(inv.amount) - BigInt(inv.state.price))} USDC</b>: the early-pay price is <b>{fmt(inv.state.price)}</b> instead of {fmt(inv.amount)}.
+                </span>
+                <span className="count">Discount ends in {countdown(left)}</span>
+              </div>
+            ) : inv.state.priceKind === "late" ? (
+              <div className="terms-live late">
+                <span>
+                  This invoice is past its due date, so the late fee stated on it applies: <b>{fmt(inv.state.price)} USDC</b> instead of {fmt(inv.amount)}.
+                </span>
+              </div>
+            ) : null}
             <div className="lines">
               <div>{inv.title} <b>{fmt(inv.amount)}</b></div>
+              {inv.termsLine ? <div>Terms <b style={{ fontWeight: 400 }}>{inv.termsLine}</b></div> : null}
               {BigInt(inv.state.received) > 0n ? <div>Already paid <b>−{fmt(inv.state.received)}</b></div> : null}
               <div>Billed to <b>{inv.customerName}</b></div>
               <div>Settles to <b className="mono">{shortHex(inv.merchant.address)}</b></div>
@@ -166,6 +207,9 @@ export function Checkout({ id }: { id: string }) {
             </button>
             <p className="co-fine">
               Funds go directly to {inv.merchant.name}. Clearmark never holds them. Your payment carries this invoice's fingerprint, so it's matched the moment it lands.
+            </p>
+            <p className="co-fine" style={{ marginTop: -4 }}>
+              <Link href="/" className="madewith" style={{ display: "inline-block" }}>Invoice with <b>Clearmark</b></Link>
             </p>
           </>
         )}

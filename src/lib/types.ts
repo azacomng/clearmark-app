@@ -24,6 +24,8 @@ export interface Merchant {
   lastSyncError: string | null;
   nextInvoiceNo: number;
   limits: Limits;
+  /** Show amounts on public share cards (link previews). Defaults to true. */
+  publicAmounts?: boolean;
 }
 
 export interface Resolution {
@@ -35,6 +37,13 @@ export interface Resolution {
   refundId?: string;
   note?: string;
   at: string;
+}
+
+/** Smart Terms. Basis points: 200 = 2%. Zero means the term is off. */
+export interface Terms {
+  earlyBps: number;
+  earlyDays: number;
+  lateBps: number;
 }
 
 export interface Invoice {
@@ -52,6 +61,8 @@ export interface Invoice {
   createdAt: string;
   voided: boolean;
   resolutions: Resolution[];
+  /** Optional early-pay discount and late fee. Missing on invoices made before Smart Terms. */
+  terms?: Terms | null;
 }
 
 export type HoldReason = "over_max" | "daily_cap" | "customer_cap";
@@ -82,6 +93,8 @@ export interface Payment {
   matchMethod: "memo" | "manual" | null;
   hold: Hold | null;
   recordedAt: string;
+  /** Wallet-to-final time measured at Clearmark checkout, in ms. Null when paid another way. */
+  settleMs?: number | null;
 }
 
 export type RefundStatus = "pending_approval" | "ready" | "sent";

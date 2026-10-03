@@ -5,7 +5,8 @@ import { invoiceMemoId, parseMemoText, refundMemoId } from "./arc";
 import { reconcile, type InvoiceState } from "./engine";
 import { DEFAULT_LIMITS, inboundHold, refundNeedsApproval } from "./limits";
 import { big, fmt, str, toUnits } from "./money";
-import type { Db, Hex, Invoice, Limits, Merchant, Payment, Refund, Resolution } from "./types";
+import { parseTerms, type TermsInput } from "./terms";
+import type { Db, Hex, Invoice, Limits, Merchant, Payment, Refund, Resolution, Terms } from "./types";
 
 export class LedgerError extends Error {
   constructor(message: string, public status = 400) {
@@ -51,6 +52,7 @@ export interface NewInvoice {
   tolerance?: string;
   dueDate: string;
   allowSplit?: boolean;
+  terms?: TermsInput | null;
 }
 
 export function createInvoice(db: Db, merchantAddr: Hex, input: NewInvoice, now: Date): Invoice {
@@ -75,6 +77,13 @@ export function createInvoice(db: Db, merchantAddr: Hex, input: NewInvoice, now:
       `This is above your ${fmt(m.limits.maxPerPayment)} USDC max per payment. Turn on split payments or raise the limit.`,
     );
   }
+  const createdAt = now.toISOString();
+  let terms: Terms | null;
+  try {
+    terms = parseTerms(input.terms, createdAt, input.dueDate);
+  } catch (e) {
+    throw new LedgerError((e as Error).message);
+  }
   const id = rid("", 7);
   const inv: Invoice = {
     id,
@@ -88,9 +97,10 @@ export function createInvoice(db: Db, merchantAddr: Hex, input: NewInvoice, now:
     dueDate: input.dueDate,
     allowSplit,
     memoId: invoiceMemoId(id),
-    createdAt: now.toISOString(),
+    createdAt,
     voided: false,
     resolutions: [],
+    terms,
   };
   db.invoices[id] = inv;
   return inv;
@@ -366,6 +376,28 @@ export function updateLimits(db: Db, merchant: Hex, input: Record<keyof Limits, 
   }
   m.limits = next;
   return next;
+}
+
+/**
+ * Record how long a checkout payment took from the wallet to final, as measured by the payer's
+ * browser. Cosmetic (it feeds the "Settled in" stamp), so it's only taken once, for a payment
+ * that was just recorded, and only within a sane range.
+ */
+export function recordSettleTime(db: Db, paymentIds: string[], ms: unknown, now: Date) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0 || n > 120_000) return;
+  for (const id of paymentIds) {
+    const p = db.payments[id];
+    if (!p || p.settleMs != null) continue;
+    if (now.getTime() - Date.parse(p.recordedAt) > 10 * 60_000) continue;
+    p.settleMs = Math.round(n);
+  }
+}
+
+export function setPublicAmounts(db: Db, merchant: Hex, show: boolean) {
+  const m = getMerchant(db, merchant);
+  m.publicAmounts = !!show;
+  return m;
 }
 
 export function setMerchantName(db: Db, merchant: Hex, name: string) {
