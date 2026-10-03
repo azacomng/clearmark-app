@@ -41,7 +41,7 @@ export function RefundCard({ refund: r, merchant, onDone }: { refund: Refund; me
   const send = async () => {
     if (r.source === "demo") return post("/api/demo/refund", { refundId: r.id });
     const account = await merchantAccount();
-    const hash = await sendWithMemo(account, r.to as Hex, BigInt(r.amount), r.memoId, memoText({ refund: r.id }));
+    const hash = await sendWithMemo(account, r.to as Hex, BigInt(r.amount), r.memoId, memoText({ refund: r.id }), r.token ?? "USDC");
     await waitForTx(hash);
     return post(`/api/refunds/${r.id}`, { action: "confirm", txHash: hash });
   };
@@ -52,7 +52,7 @@ export function RefundCard({ refund: r, merchant, onDone }: { refund: Refund; me
   return (
     <div className="suggest">
       <b>
-        Refund {fmt(r.amount)} USDC to {shortHex(r.to)}
+        Refund {fmt(r.amount)} {r.token ?? "USDC"} to {shortHex(r.to)}
       </b>
       <span className="muted" style={{ fontSize: 13 }}>
         {needsApproval

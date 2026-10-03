@@ -35,8 +35,15 @@ export default function History() {
   }, [data, q, f, month]);
 
   const months = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.at.slice(0, 7)))].sort().reverse(), [data]);
-  const totIn = rows.filter((r) => r.kind === "in").reduce((a, r) => a + BigInt(r.amount), 0n);
-  const totOut = rows.filter((r) => r.kind === "out").reduce((a, r) => a - BigInt(r.amount), 0n);
+  // Totals per token: USDC and EURC are never added together.
+  const totals = (["USDC", "EURC"] as const)
+    .map((t) => {
+      const mine = rows.filter((r) => (r.token ?? "USDC") === t);
+      const tin = mine.filter((r) => r.kind === "in").reduce((a, r) => a + BigInt(r.amount), 0n);
+      const tout = mine.filter((r) => r.kind === "out").reduce((a, r) => a - BigInt(r.amount), 0n);
+      return { t, tin, tout, n: mine.length };
+    })
+    .filter((x) => x.t === "USDC" || x.n > 0);
 
   if (error) return <p className="notice bad">{error}</p>;
 
@@ -55,7 +62,7 @@ export default function History() {
         <div className="seg" role="group" aria-label="Filter history">
           {(["all", "in", "out", "flag"] as F[]).map((x) => (
             <button key={x} aria-pressed={f === x} onClick={() => setF(x)}>
-              {{ all: "All", in: "Received", out: "Refunds", flag: "Flagged" }[x]}
+              {{ all: "All", in: "Received", out: "Sent out", flag: "Flagged" }[x]}
             </button>
           ))}
         </div>
@@ -69,9 +76,12 @@ export default function History() {
 
       <div className="row muted" style={{ fontSize: 13, gap: 18 }}>
         <span>{rows.length} transactions</span>
-        <span>Received <b className="mono" style={{ color: "var(--fg)" }}>{fmt(totIn)}</b></span>
-        <span>Refunded <b className="mono" style={{ color: "var(--fg)" }}>{fmt(totOut)}</b></span>
-        <span>Net <b className="mono" style={{ color: "var(--fg)" }}>{fmt(totIn - totOut)}</b> USDC</span>
+        {totals.map(({ t, tin, tout }) => (
+          <span key={t}>
+            {t}: in <b className="mono" style={{ color: "var(--fg)" }}>{fmt(tin)}</b> · out <b className="mono" style={{ color: "var(--fg)" }}>{fmt(tout)}</b> · net{" "}
+            <b className="mono" style={{ color: "var(--fg)" }}>{fmt(tin - tout)}</b>
+          </span>
+        ))}
       </div>
 
       <div className="panel">
@@ -89,7 +99,7 @@ export default function History() {
                 rows.map((r) => (
                   <tr key={r.kind + r.id}>
                     <td className="muted">{when(r.at)}</td>
-                    <td>{r.kind === "in" ? "Received" : "Refund"}</td>
+                    <td>{r.kind === "in" ? "Received" : r.status === "PAYOUT" ? "Payout" : "Refund"}</td>
                     <td>
                       {r.counterparty}
                       <br />
@@ -97,7 +107,7 @@ export default function History() {
                     </td>
                     <td>{r.invoiceId ? <Link href={`/app/invoices/${r.invoiceId}`}>{r.invoiceNumber}</Link> : <span className="faint">–</span>}</td>
                     <td><span className={`pill ${r.pill}`}>{r.status}</span></td>
-                    <td className="num" style={r.kind === "out" ? { color: "var(--muted)" } : undefined}>{fmt(r.amount)}</td>
+                    <td className="num" style={r.kind === "out" ? { color: "var(--muted)" } : undefined}>{fmt(r.amount)} <span className="faint" style={{ fontSize: 11 }}>{r.token ?? "USDC"}</span></td>
                     <td className="mono" style={{ fontSize: 12 }}>
                       {r.source === "demo" ? <span className="faint">simulated</span> : r.txHash ? <a href={txUrl(r.txHash)} target="_blank" rel="noreferrer">{shortHex(r.txHash)}</a> : null}
                     </td>

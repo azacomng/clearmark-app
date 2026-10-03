@@ -12,6 +12,7 @@
 // part of a split invoice at checkout and the invoice is not yet overdue.
 
 import { absDiff, big, str, sum, type Units } from "./money";
+import { paymentValue } from "./fx";
 import { priceAt, type PriceKind } from "./terms";
 import type { Invoice, Payment } from "./types";
 
@@ -31,8 +32,9 @@ export type PaidVariant = null | "split" | "tolerance" | "written_off" | "refund
 export interface ClassifiedPayment {
   id: string;
   cls: PaymentClass;
+  /** Value toward the invoice, in invoice units. */
   amount: Units;
-  /** Amount of this payment that is excess or duplicate (needs a refund or credit). */
+  /** Amount of this payment that is excess or duplicate (needs a refund or credit), in invoice units. */
   surplus: Units;
 }
 
@@ -92,7 +94,7 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
   const classified: ClassifiedPayment[] = [];
 
   for (const p of payments) {
-    const amt = big(p.amount);
+    const amt = paymentValue(invoice, p);
     let cls: PaymentClass;
     let surplus = 0n;
     if (!covered) {
@@ -121,7 +123,7 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
       }
     }
     seenAmounts.push(amt);
-    classified.push({ id: p.id, cls, amount: p.amount, surplus: str(surplus) });
+    classified.push({ id: p.id, cls, amount: str(amt), surplus: str(surplus) });
   }
 
   if (!covered) {
@@ -131,7 +133,7 @@ export function reconcile(invoice: Invoice, allPayments: Payment[], now: Date = 
     priceKind = pn.kind;
     ({ lower, upper } = bounds(A));
   }
-  const received = sum(payments.map((p) => big(p.amount)));
+  const received = sum(payments.map((p) => paymentValue(invoice, p)));
   const clsById = new Map(classified.map((c) => [c.id, c.cls]));
   const res = invoice.resolutions;
   const writtenOff = sum(res.filter((r) => r.kind === "write_off").map((r) => big(r.amount)));

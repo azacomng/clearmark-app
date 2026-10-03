@@ -166,6 +166,9 @@ export default function Dashboard() {
             <CountUp value={fmt(k.receivedMonth)} />
             <small>USDC</small>
           </div>
+          {BigInt(k.receivedMonthEurc ?? "0") > 0n ? (
+            <div className="faint mono" style={{ fontSize: 13, marginTop: -6 }}>+ {fmt(k.receivedMonthEurc)} EURC</div>
+          ) : null}
           <div className="sub">
             <div><b>{k.paymentsMonth}</b>payments</div>
             <div><b>{fmt(k.refunded)}</b>refunded</div>

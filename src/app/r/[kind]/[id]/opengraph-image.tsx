@@ -23,8 +23,8 @@ export default async function Image({ params }: { params: Promise<{ kind: string
     r = null;
   }
 
-  const headline = !r ? "Receipt not found" : r.publicAmounts ? `${fmt(r.amount)} USDC` : r.kind === "refund" ? "Refund sent" : "Payment received";
-  const sub = !r ? "" : r.kind === "refund" ? `Refunded by ${r.merchantName}` : `Paid to ${r.merchantName}${r.invoice ? ` · ${r.invoice.number}` : ""}`;
+  const headline = !r ? "Receipt not found" : r.publicAmounts ? `${fmt(r.amount)} ${r.token}` : r.kind === "refund" ? "Refund sent" : r.kind === "payout" ? "Payout sent" : "Payment received";
+  const sub = !r ? "" : r.kind === "refund" ? `Refunded by ${r.merchantName}` : r.kind === "payout" ? `Paid out by ${r.merchantName}` : `Paid to ${r.merchantName}${r.invoice ? ` · ${r.invoice.number}` : ""}`;
 
   return new ImageResponse(
     (
@@ -62,7 +62,7 @@ export default async function Image({ params }: { params: Promise<{ kind: string
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 40 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 760 }}>
             <div style={{ display: "flex", fontSize: 26, color: "#8B9DFF", letterSpacing: 5 }}>
-              {r?.kind === "refund" ? "REFUND RECEIPT" : "PROOF RECEIPT"}
+              {r?.kind === "refund" ? "REFUND RECEIPT" : r?.kind === "payout" ? "PAYOUT RECEIPT" : "PROOF RECEIPT"}
             </div>
             <div style={{ display: "flex", fontSize: 92, fontWeight: 700, letterSpacing: -3, lineHeight: 1 }}>{headline}</div>
             <div style={{ display: "flex", fontSize: 30, color: "#98A2C3" }}>{sub}</div>

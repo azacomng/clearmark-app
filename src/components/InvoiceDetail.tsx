@@ -9,6 +9,8 @@ import type { InvoiceView, PaymentView } from "@/lib/service";
 import type { Refund } from "@/lib/types";
 import { friendlyError } from "@/lib/wallet";
 import { useShell } from "./AppShell";
+import { ConvertCard } from "./ConvertCard";
+import { PayoutCard } from "./PayoutCard";
 import { RefundCard } from "./RefundCard";
 
 type RefundView = Refund & { invoiceNumber: string | null; customerName: string | null };
@@ -60,9 +62,14 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
   const post = (path: string, json: unknown) => api(path, { method: "POST", json });
 
   const simulate = (amount: string, extra: Record<string, unknown> = {}) =>
-    act(`sim${amount}`, () => post("/api/demo/pay", { invoiceId: inv.id, amount, ...extra }));
+    act(`sim${amount}`, () => post("/api/demo/pay", { invoiceId: inv.id, amount, token: inv.currency === "EUR" ? "EURC" : "USDC", ...extra }));
 
   const amt = fmt(inv.amount);
+  const u = inv.unit;
+  const done = () => {
+    reload();
+    refresh();
+  };
   const openSurplus = (p: PaymentView) =>
     BigInt(p.surplus) - inv.resolutions.filter((r) => r.paymentId === p.id).reduce((a, r) => a + BigInt(r.amount), 0n);
   const surplusPayments = payments.filter((p) => ["duplicate", "over", "excess"].includes(p.cls ?? "") && openSurplus(p) > 0n);
@@ -80,7 +87,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
         <div>
           <div className="amt">
             {amt}
-            <small>USDC</small>
+            <small>{u}</small>
           </div>
           <div className="faint" style={{ fontSize: 12, textAlign: "right" }}>
             Due {date(inv.dueDate)}
@@ -99,12 +106,12 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
       {inv.termsLine ? (
         <p className="faint" style={{ fontSize: 12.5 }}>
           Terms: {inv.termsLine}
-          {st.priceKind !== "standard" && BigInt(st.balance) > 0n ? ` · price now ${fmt(st.price)} USDC` : ""}
+          {st.priceKind !== "standard" && BigInt(st.balance) > 0n ? ` · price now ${fmt(st.price)} ${u}` : ""}
         </p>
       ) : null}
       <div className="row">
         <span key={st.label} className={`stamp pop ${inv.pill}`}>{st.label}</span>
-        <p className="muted" style={{ fontSize: 13, flex: "1 1 200px" }}>{explain(inv)}</p>
+        <p className="muted" style={{ fontSize: 13, flex: "1 1 200px" }}>{explain(inv).replaceAll("USDC", u)}</p>
       </div>
 
       {!inv.voided ? (
@@ -137,7 +144,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
       {/* Actions the engine says are needed */}
       {(st.status === "underpaid" || st.status === "partial") && (
         <div className="suggest">
-          <b>{fmt(st.balance)} USDC still due</b>
+          <b>{fmt(st.balance)} {u} still due</b>
           <span className="muted" style={{ fontSize: 13 }}>Send the same payment link: it asks for the balance only.</span>
           <div className="row">
             <button className="btn sm" onClick={() => navigator.clipboard?.writeText(link)}>Copy balance link</button>
@@ -154,7 +161,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
           return (
             <div className="suggest" key={p.id}>
               <b>
-                {p.cls === "duplicate" ? "Duplicate payment" : "Overpayment"}: {fmt(left)} USDC
+                {p.cls === "duplicate" ? "Duplicate payment" : "Overpayment"}: {fmt(left)} {u}
               </b>
               <span className="muted" style={{ fontSize: 13 }}>
                 From {shortHex(p.from)} on {when(p.timestamp)}. Refund it or keep it as customer credit.
@@ -170,6 +177,8 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
             </div>
           );
         })}
+      <PayoutCard inv={inv} onDone={done} />
+      <ConvertCard inv={inv} onDone={done} />
       {openRefunds.map((r) => (
         <RefundCard key={r.id} refund={r} merchant={inv.merchant} onDone={() => { setMsg({ kind: "ok", text: r.status === "pending_approval" ? "Refund approved." : "Refund updated." }); reload(); refresh(); }} />
       ))}
@@ -180,7 +189,9 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
         </div>
         {payments.map((p) => (
           <div key={p.id}>
-            <b>{fmt(p.amount)} USDC received</b> · {p.hold && !p.hold.resolution ? "held for review" : p.clsLabel ?? "unmatched"}
+            <b>
+              {fmt(p.amount)} {p.token} received{p.token === "USDC" && u === "EUR" ? ` · worth ${fmt(p.value)} EUR` : ""}
+            </b> · {p.hold && !p.hold.resolution ? "held for review" : p.clsLabel ?? "unmatched"}
             {p.matchMethod === "manual" ? " · matched by you" : ""}
             <br />
             <span className="mono" style={{ fontSize: 11.5 }}>
@@ -194,7 +205,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
         ))}
         {refunds.filter((r) => r.status === "sent").map((r) => (
           <div key={r.id}>
-            <b>{fmt(r.amount)} USDC refunded</b> · {r.reason.replace("_", " ")}
+            <b>{fmt(r.amount)} {r.token ?? "USDC"} refunded</b> · {r.reason.replace("_", " ")}
             <br />
             <span className="mono" style={{ fontSize: 11.5 }}>
               {r.sentAt ? when(r.sentAt) : ""} · <Link href={`/r/f/${r.id}`}>receipt</Link>
@@ -217,6 +228,12 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
             <button className="btn sm" disabled={!!busy} onClick={() => simulate((Number(inv.amount) * 1.2 / 1e6).toFixed(2))}>Over 120%</button>
             <button className="btn sm" disabled={!!busy} onClick={() => simulate((Number(inv.amount) / 2e6).toFixed(2), { intent: "part" })}>Half (split)</button>
             <button className="btn sm" disabled={!!busy} onClick={() => simulate(fmt(inv.amount).replace(/,/g, ""), { tagged: false })}>Untagged</button>
+            {inv.currency === "EUR" ? (
+              <button className="btn sm" disabled={!!busy} onClick={() => simulate("quote", { token: "USDC" })}>
+                Pay in USDC
+              </button>
+            ) : null}
+            <button className="btn sm" disabled={!!busy} onClick={() => (inv.currency === "EUR" ? simulate("quote", { token: "USDC", via: "Base_Sepolia" }) : simulate(fmt(BigInt(st.balance) > 0n ? st.balance : inv.amount).replace(/,/g, ""), { via: "Base_Sepolia" }))}>From Base</button>
           </div>
         </div>
       ) : null}

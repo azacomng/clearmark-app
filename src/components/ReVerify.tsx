@@ -7,7 +7,7 @@ import type { Hex } from "@/lib/types";
 import { browserClient } from "@/lib/wallet";
 
 /** Re-check the receipt against Arc directly from the browser, without trusting Clearmark's server. */
-export function ReVerify(p: { kind: string; source: string; txHash: Hex; from: Hex; to: Hex; amount: string; memoId: Hex | null }) {
+export function ReVerify(p: { kind: string; source: string; txHash: Hex; from: Hex; to: Hex; amount: string; memoId: Hex | null; token?: string }) {
   const [state, setState] = useState<{ kind: "ok" | "bad" | "busy"; text: string } | null>(null);
 
   async function run() {
@@ -21,9 +21,9 @@ export function ReVerify(p: { kind: string; source: string; txHash: Hex; from: H
       if (rc.status !== "success") throw new Error("The transaction reverted.");
       const ts = (await browserClient.getBlock({ blockNumber: rc.blockNumber })).timestamp;
       const match = extractTransfers(rc.logs as Log[], p.txHash).find(
-        (t) => t.from === p.from.toLowerCase() && t.to === p.to.toLowerCase() && t.amount === BigInt(p.amount),
+        (t) => t.from === p.from.toLowerCase() && t.to === p.to.toLowerCase() && t.amount === BigInt(p.amount) && t.token === (p.token ?? "USDC"),
       );
-      if (!match) throw new Error("No matching USDC transfer in that transaction.");
+      if (!match) throw new Error(`No matching ${p.token ?? "USDC"} transfer in that transaction.`);
       if (p.memoId && match.memoId?.toLowerCase() !== p.memoId.toLowerCase()) throw new Error("The memo onchain doesn't match this receipt.");
       setState({ kind: "ok", text: `Verified on Arc: block ${rc.blockNumber.toLocaleString()}, ${new Date(Number(ts) * 1000).toUTCString()}.` });
     } catch (e) {

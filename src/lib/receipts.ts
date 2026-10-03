@@ -4,6 +4,8 @@
 import { CLASS_LABEL } from "./engine";
 import { invoiceState, LedgerError } from "./ledger";
 import { fmt } from "./money";
+import type { Token } from "./arc";
+import { currencyOf, needsFx, rateLine, tokenOf, toInvoiceUnits, unitOf } from "./fx";
 import type { Db, Hex } from "./types";
 
 export function approvalMessage(r: { id: string; amount: string; to: string }) {
@@ -11,7 +13,8 @@ export function approvalMessage(r: { id: string; amount: string; to: string }) {
 }
 
 export interface ReceiptData {
-  kind: "payment" | "refund";
+  kind: "payment" | "refund" | "payout";
+  token: Token;
   id: string;
   title: string;
   seal: string;
@@ -24,7 +27,7 @@ export interface ReceiptData {
   memoText: string | null;
   matchedBy: string;
   merchantName: string;
-  invoice: { id: string; number: string; title: string; customerName: string; amount: string; label: string } | null;
+  invoice: { id: string; number: string; title: string; customerName: string; amount: string; unit: string; label: string } | null;
   related: { label: string; href: string }[];
   note: string | null;
   source: "chain" | "demo";
@@ -32,6 +35,12 @@ export interface ReceiptData {
   settled: string;
   /** False when the merchant hides amounts on public share cards. */
   publicAmounts: boolean;
+  /** Payouts: the collaborator gets an invite to their own workspace. */
+  invite: boolean;
+  /** Conversion shown when the payment token differs from the invoice currency. */
+  fx: string | null;
+  /** Source chain for payments bridged to Arc first. */
+  via: string | null;
 }
 
 export function settledLine(settleMs: number | null | undefined): string {
@@ -56,11 +65,17 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
     const cls = st?.payments.find((c) => c.id === p.id)?.cls;
     const held = !!p.hold && !p.hold.resolution;
     const refunds = Object.values(db.refunds).filter((r) => r.paymentId === p.id && r.status === "sent");
+    const token = tokenOf(p);
+    const fx =
+      inv && p.fx && needsFx(currencyOf(inv), token)
+        ? `${fmt(p.amount)} ${token} = ${fmt(toInvoiceUnits(BigInt(p.amount), BigInt(p.fx.rate)))} ${unitOf(inv)} at ${rateLine(p.fx.rate)} (${p.fx.quoteId ? "rate quoted at checkout" : "rate confirmed by merchant"}; ${p.fx.source})`
+        : null;
     const seal = held ? "HELD" : !inv ? "RECEIVED" : cls === "duplicate" ? "DUPLICATE" : cls === "over" || cls === "excess" ? "OVERPAID" : cls === "part" ? "PARTIAL" : cls === "short" ? "SHORT" : "PAID";
     return {
       kind: "payment",
+      token,
       id: key,
-      title: `${fmt(p.amount)} USDC received`,
+      title: `${fmt(p.amount)} ${token} received`,
       seal,
       amount: p.amount,
       at: p.timestamp,
@@ -71,8 +86,8 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       memoText: p.memoText,
       matchedBy: p.matchMethod === "memo" ? "Onchain memo · exact" : p.matchMethod === "manual" ? "Confirmed by merchant" : "Not matched yet",
       merchantName: db.merchants[p.merchant]?.name ?? "Merchant",
-      invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, label: st.label } : null,
-      related: refunds.map((r) => ({ label: `Refund ${fmt(r.amount)} USDC`, href: `/r/f/${r.id}` })),
+      invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, unit: unitOf(inv), label: st.label } : null,
+      related: refunds.map((r) => ({ label: `Refund ${fmt(r.amount)} ${r.token ?? "USDC"}`, href: `/r/f/${r.id}` })),
       note: held
         ? `Held for review: ${p.hold!.detail}`
         : cls
@@ -81,6 +96,9 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       source: p.source,
       settled: settledLine(p.settleMs),
       publicAmounts: db.merchants[p.merchant]?.publicAmounts !== false,
+      invite: false,
+      fx,
+      via: p.via ?? null,
     };
   }
   if (kind === "f") {
@@ -92,8 +110,9 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
     const reason = { duplicate: "Duplicate payment returned", overpayment: "Overpayment returned", returned_hold: "Held payment returned", manual: "Refund" }[r.reason];
     return {
       kind: "refund",
+      token: r.token ?? "USDC",
       id: r.id,
-      title: `${fmt(r.amount)} USDC refunded`,
+      title: `${fmt(r.amount)} ${r.token ?? "USDC"} refunded`,
       seal: "REFUND",
       amount: r.amount,
       at: r.sentAt!,
@@ -104,12 +123,49 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       memoText: null,
       matchedBy: reason,
       merchantName: db.merchants[r.merchant]?.name ?? "Merchant",
-      invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, label: st.label } : null,
-      related: p ? [{ label: `Original payment ${fmt(p.amount)} USDC`, href: `/r/p/${p.id.replace(":", "-")}` }] : [],
+      invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, unit: unitOf(inv), label: st.label } : null,
+      related: p ? [{ label: `Original payment ${fmt(p.amount)} ${tokenOf(p)}`, href: `/r/p/${p.id.replace(":", "-")}` }] : [],
       note: `${reason}. Sent from the merchant's wallet to the original payer.`,
       source: r.source,
       settled: settledLine(null),
       publicAmounts: db.merchants[r.merchant]?.publicAmounts !== false,
+      invite: false,
+      fx: null,
+      via: null,
+    };
+  }
+  if (kind === "s") {
+    const [pid, idx] = key.split(".");
+    const po = db.payouts?.[pid];
+    const line = po?.lines[Number(idx)];
+    if (!po || !line || po.status !== "sent" || !po.txHash) throw new LedgerError("Receipt not found", 404);
+    const inv = db.invoices[po.invoiceId];
+    const st = inv ? invoiceState(db, inv) : null;
+    const merchantName = db.merchants[po.merchant]?.name ?? "Merchant";
+    return {
+      kind: "payout",
+      token: po.token,
+      id: key,
+      title: `${fmt(line.amount)} ${po.token} paid out`,
+      seal: "PAYOUT",
+      amount: line.amount,
+      at: po.sentAt!,
+      from: po.merchant,
+      to: line.address,
+      txHash: po.txHash,
+      memoId: null,
+      memoText: null,
+      matchedBy: `Payday Split · ${line.bps / 100}% share`,
+      merchantName,
+      invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, unit: unitOf(inv), label: st.label } : null,
+      related: [],
+      note: `${line.label}'s ${line.bps / 100}% share of ${inv?.number ?? "an invoice"} (settled at ${fmt(po.base)} ${inv ? unitOf(inv) : po.token}), sent by ${merchantName} in one batch with the other collaborators.`,
+      source: po.source,
+      settled: settledLine(null),
+      publicAmounts: db.merchants[po.merchant]?.publicAmounts !== false,
+      invite: true,
+      fx: null,
+      via: null,
     };
   }
   throw new LedgerError("Receipt not found", 404);

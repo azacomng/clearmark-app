@@ -21,6 +21,7 @@ export const POST = handle(async (req: Request) => {
       to: r.to,
       amount: big(r.amount),
       memoId: r.memoId,
+      token: r.token ?? "USDC",
     });
   });
   return json(r);

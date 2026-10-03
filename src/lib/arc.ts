@@ -34,8 +34,37 @@ export const arcTestnet = defineChain({
 
 /** USDC ERC-20 interface on Arc testnet (6 decimals). */
 export const USDC_ADDRESS: Hex = "0x3600000000000000000000000000000000000000";
+/** EURC on Arc testnet (6 decimals). Source: docs.arc.io/arc/references/contract-addresses */
+export const EURC_ADDRESS: Hex = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
 /** Arc's predeployed Memo contract. Preserves msg.sender for the wrapped call. */
 export const MEMO_ADDRESS: Hex = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
+/** Arc's sender-preserving batcher (Multicall3From). Every subcall sees the sending EOA as msg.sender. */
+export const BATCHER_ADDRESS: Hex = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
+
+export type Token = "USDC" | "EURC";
+export const TOKEN_ADDRESS: Record<Token, Hex> = { USDC: USDC_ADDRESS, EURC: EURC_ADDRESS };
+export function tokenAt(address: string): Token | null {
+  const a = address.toLowerCase();
+  if (a === USDC_ADDRESS.toLowerCase()) return "USDC";
+  if (a === EURC_ADDRESS.toLowerCase()) return "EURC";
+  return null;
+}
+
+/** Multicall3's aggregate3, as Arc's Multicall3From publishes it (nonpayable, no value forwarding). */
+export const batcherAbi = parseAbi([
+  "struct Call3 { address target; bool allowFailure; bytes callData; }",
+  "struct Result { bool success; bytes returnData; }",
+  "function aggregate3(Call3[] calls) returns (Result[] returnData)",
+]);
+
+/** One atomic batch of token transfers, sent from the caller's own wallet. */
+export function batchTransferCalldata(token: Token, transfers: { to: Hex; amount: bigint }[]): Hex {
+  return encodeFunctionData({
+    abi: batcherAbi,
+    functionName: "aggregate3",
+    args: [transfers.map((t) => ({ target: TOKEN_ADDRESS[token], allowFailure: false, callData: transferCalldata(t.to, t.amount) }))],
+  });
+}
 
 export const memoAbi = parseAbi([
   "function memo(address target, bytes data, bytes32 memoId, bytes memoData)",
@@ -81,12 +110,12 @@ export function transferCalldata(to: Hex, amount: bigint): Hex {
   return encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to, amount] });
 }
 
-/** Calldata for Memo.memo(USDC, transfer(to, amount), memoId, memoData). */
-export function memoTransferCalldata(to: Hex, amount: bigint, memoId: Hex, memoData: Hex): Hex {
+/** Calldata for Memo.memo(token, transfer(to, amount), memoId, memoData). */
+export function memoTransferCalldata(to: Hex, amount: bigint, memoId: Hex, memoData: Hex, token: Token = "USDC"): Hex {
   return encodeFunctionData({
     abi: memoAbi,
     functionName: "memo",
-    args: [USDC_ADDRESS, transferCalldata(to, amount), memoId, memoData],
+    args: [TOKEN_ADDRESS[token], transferCalldata(to, amount), memoId, memoData],
   });
 }
 
@@ -99,20 +128,21 @@ export interface ExtractedTransfer {
   amount: bigint;
   memoId: Hex | null;
   memoData: Hex | null;
+  token: Token;
 }
 
 /**
- * Pull every USDC transfer out of a transaction's logs and attach the Memo that wrapped it,
+ * Pull every USDC and EURC transfer out of a transaction's logs and attach the Memo that wrapped it,
  * if any. A Memo is tied to its transfer by callDataHash = keccak256(transfer calldata).
  */
 export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] {
-  const memos: { callDataHash: Hex; memoId: Hex; memo: Hex; used: boolean }[] = [];
+  const memos: { target: string; callDataHash: Hex; memoId: Hex; memo: Hex; used: boolean }[] = [];
   for (const log of logs) {
     if (log.address.toLowerCase() !== MEMO_ADDRESS.toLowerCase()) continue;
     try {
       const ev = decodeEventLog({ abi: memoAbi, data: log.data, topics: log.topics });
-      if (ev.eventName === "Memo" && ev.args.target.toLowerCase() === USDC_ADDRESS.toLowerCase()) {
-        memos.push({ callDataHash: ev.args.callDataHash, memoId: ev.args.memoId, memo: ev.args.memo, used: false });
+      if (ev.eventName === "Memo" && tokenAt(ev.args.target)) {
+        memos.push({ target: ev.args.target.toLowerCase(), callDataHash: ev.args.callDataHash, memoId: ev.args.memoId, memo: ev.args.memo, used: false });
       }
     } catch {
       /* not a Memo event */
@@ -120,7 +150,8 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
   }
   const out: ExtractedTransfer[] = [];
   for (const log of logs) {
-    if (log.address.toLowerCase() !== USDC_ADDRESS.toLowerCase()) continue;
+    const token = tokenAt(log.address);
+    if (!token) continue;
     let ev;
     try {
       ev = decodeEventLog({ abi: erc20Abi, data: log.data, topics: log.topics });
@@ -130,7 +161,7 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
     if (ev.eventName !== "Transfer") continue;
     const { from, to, value } = ev.args;
     const hash = keccak256(transferCalldata(getAddress(to), value));
-    const memo = memos.find((m) => !m.used && m.callDataHash === hash);
+    const memo = memos.find((m) => !m.used && m.target === log.address.toLowerCase() && m.callDataHash === hash);
     if (memo) memo.used = true;
     out.push({
       txHash,
@@ -141,6 +172,7 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
       amount: value,
       memoId: memo?.memoId ?? null,
       memoData: memo?.memo ?? null,
+      token,
     });
   }
   return out;

@@ -41,6 +41,24 @@ Growth features:
   countdown. Reconciliation judges the invoice at the price that applied at the settle timestamp of the
   payment that covered it (`src/lib/terms.ts`), so 245.00 paid on day 2 of a 250.00 invoice is
   `PAID · EARLY DISCOUNT`, and 250.00 after the due date with a 1.5% fee is short by 3.75.
+- **Pay from any chain**: the checkout's "Pay from" menu takes USDC from eight testnets (Base, Ethereum,
+  Arbitrum, OP, Avalanche, Polygon, Unichain, Linea) through Circle's Bridge Kit (CCTP v2, Arc domain 26)
+  to the payer's own wallet on Arc, with Circle's Forwarder doing the mint, then pays the invoice there
+  with its memo (`via=<chain>` is recorded on the receipt). A memo can't cross chains, so bridging to the
+  merchant directly would arrive untagged; bridge-then-pay keeps every payment deterministic.
+- **Payday Splits**: an invoice can name up to 8 collaborators with a percentage each. Once the invoice
+  is covered, one transaction through Arc's **Multicall3From** (`0x522f…47D0`) pays every share from the
+  merchant's own wallet (each transfer keeps the merchant as sender, so it stays non-custodial). The
+  payout is recorded only after every share is verified onchain, and each collaborator gets a payout
+  receipt (`/r/s/…`) with an invite to their own workspace. Shares are of the settled price, never of an
+  overpayment.
+- **Get paid in euros**: EUR invoices are paid in **EURC** 1:1, or in USDC at a rate quoted at checkout
+  (15 minutes; the quote id rides in the memo as `q=…`). Reconciliation is in the invoice currency.
+  A USDC payment without a valid quote is held (`fx_missing`) until the merchant accepts it at the
+  current reference rate. Receipts show both amounts and the rate. USDC received on a EUR invoice can be
+  converted to EURC from the invoice page with Circle's Swap Kit; an optional Clearmark fee on that swap
+  is off unless `NEXT_PUBLIC_CLEARMARK_SWAP_FEE_BPS` and `NEXT_PUBLIC_CLEARMARK_FEE_RECIPIENT` are set.
+  Reference rates come from the ECB via frankfurter.app, or pin one with `CLEARMARK_EUR_PER_USD`.
 
 ## How matching works
 

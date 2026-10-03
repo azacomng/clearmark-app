@@ -3,7 +3,7 @@
 
 import "server-only";
 import { createPublicClient, http, parseAbiItem, type Log } from "viem";
-import { arcTestnet, ARC_TESTNET_CHAIN_ID, extractTransfers, USDC_ADDRESS, type ExtractedTransfer } from "./arc";
+import { arcTestnet, ARC_TESTNET_CHAIN_ID, EURC_ADDRESS, extractTransfers, USDC_ADDRESS, type ExtractedTransfer } from "./arc";
 import type { Hex } from "./types";
 
 const RPC = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.io";
@@ -62,7 +62,7 @@ const CHUNK = 5_000n;
 const MAX_BLOCKS_PER_SYNC = 50_000n;
 
 /**
- * Find inbound USDC transfers to `merchant` in (fromBlock, toBlock], and resolve each one's memo
+ * Find inbound USDC and EURC transfers to `merchant` in (fromBlock, toBlock], and resolve each one's memo
  * by reading its transaction receipt. Bounded per call so a long gap catches up over several syncs.
  */
 export async function scanInbound(merchant: Hex, after: bigint) {
@@ -73,7 +73,7 @@ export async function scanInbound(merchant: Hex, after: bigint) {
   const seenTx = new Set<string>();
   for (let start = after + 1n; start <= to; start += CHUNK) {
     const end = start + CHUNK - 1n > to ? to : start + CHUNK - 1n;
-    const logs = await client.getLogs({ address: USDC_ADDRESS, event: transferEvent, args: { to: merchant }, fromBlock: start, toBlock: end });
+    const logs = await client.getLogs({ address: [USDC_ADDRESS, EURC_ADDRESS], event: transferEvent, args: { to: merchant }, fromBlock: start, toBlock: end });
     for (const log of logs) {
       if (!log.transactionHash || seenTx.has(log.transactionHash)) continue;
       seenTx.add(log.transactionHash);

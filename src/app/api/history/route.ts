@@ -11,9 +11,9 @@ export const GET = handle(async (req: Request) => {
   const origin = url.origin;
   const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
   const lines = [
-    ["date_utc", "type", "counterparty", "wallet", "invoice", "status", "amount_usdc", "tx_hash", "receipt_url", "source"].join(","),
+    ["date_utc", "type", "counterparty", "wallet", "invoice", "status", "amount", "token", "tx_hash", "receipt_url", "source"].join(","),
     ...rows.map((r) =>
-      [r.at, r.kind === "in" ? "received" : "refund", r.counterparty, r.address, r.invoiceNumber ?? "", r.status, fmt(r.amount).replace(/,/g, ""), r.txHash ?? "", origin + r.receipt, r.source]
+      [r.at, r.kind === "in" ? "received" : r.status === "PAYOUT" ? "payout" : "refund", r.counterparty, r.address, r.invoiceNumber ?? "", r.status, fmt(r.amount).replace(/,/g, ""), r.token ?? "USDC", r.txHash ?? "", origin + r.receipt, r.source]
         .map((x) => esc(String(x)))
         .join(","),
     ),

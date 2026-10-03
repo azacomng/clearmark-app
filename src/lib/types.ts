@@ -1,3 +1,4 @@
+import type { Token } from "./arc";
 import type { Units } from "./money";
 
 export type Hex = `0x${string}`;
@@ -46,6 +47,16 @@ export interface Terms {
   lateBps: number;
 }
 
+/** Invoice currency. EUR invoices are paid in EURC 1:1, or in USDC at a quoted rate. */
+export type Currency = "USDC" | "EUR";
+
+/** Payday Splits: a collaborator's share of an invoice, paid out after the invoice is paid. */
+export interface Split {
+  label: string;
+  address: Hex;
+  bps: number;
+}
+
 export interface Invoice {
   id: string; // public slug used in links
   merchant: Hex;
@@ -63,9 +74,14 @@ export interface Invoice {
   resolutions: Resolution[];
   /** Optional early-pay discount and late fee. Missing on invoices made before Smart Terms. */
   terms?: Terms | null;
+  /** Missing on older invoices, which are USDC. */
+  currency?: Currency;
+  splits?: Split[];
+  /** USDC received on a EUR invoice that the merchant swapped to EURC with Swap Kit. */
+  conversions?: { txHash: Hex; amountIn: Units; at: string }[];
 }
 
-export type HoldReason = "over_max" | "daily_cap" | "customer_cap";
+export type HoldReason = "over_max" | "daily_cap" | "customer_cap" | "fx_missing";
 
 export interface Hold {
   reason: HoldReason;
@@ -95,6 +111,15 @@ export interface Payment {
   recordedAt: string;
   /** Wallet-to-final time measured at Clearmark checkout, in ms. Null when paid another way. */
   settleMs?: number | null;
+  /** Missing on older payments, which are USDC. */
+  token?: Token;
+  /**
+   * Conversion into the invoice currency when the token differs from it (USDC paid on a EUR
+   * invoice). rate = invoice units per 1 token unit, scaled by 1e6.
+   */
+  fx?: { rate: Units; quoteId: string | null; source: string } | null;
+  /** Source chain for a payment bridged to Arc before it was paid (e.g. "Base Sepolia"). */
+  via?: string | null;
 }
 
 export type RefundStatus = "pending_approval" | "ready" | "sent";
@@ -115,6 +140,46 @@ export interface Refund {
   sentAt: string | null;
   createdAt: string;
   source: "chain" | "demo";
+  /** Token the refund is sent in (the original payment's). Missing = USDC. */
+  token?: Token;
+  /** What the refund resolves on the invoice, in invoice units (differs from amount only with FX). */
+  invoiceUnits?: Units;
+}
+
+export interface PayoutLine {
+  label: string;
+  address: Hex;
+  bps: number;
+  amount: Units;
+}
+
+export interface Payout {
+  id: string;
+  merchant: Hex;
+  invoiceId: string;
+  token: Token;
+  /** What the shares are computed on: the settled invoice amount. */
+  base: Units;
+  lines: PayoutLine[];
+  status: "ready" | "sent";
+  txHash: Hex | null;
+  blockNumber: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  source: "chain" | "demo";
+}
+
+/** A USDC price for a EUR invoice, fixed for a short window so the payer knows what to send. */
+export interface Quote {
+  id: string;
+  invoiceId: string;
+  /** EUR units per 1 USDC, scaled by 1e6. */
+  rate: Units;
+  usdc: Units;
+  eur: Units;
+  source: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface Db {
@@ -124,5 +189,7 @@ export interface Db {
   payments: Record<string, Payment>;
   refunds: Record<string, Refund>;
   nonces: Record<string, { address: Hex; expires: number }>;
+  payouts?: Record<string, Payout>;
+  quotes?: Record<string, Quote>;
   secret?: string;
 }

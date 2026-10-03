@@ -9,7 +9,19 @@ import {
   numberToHex,
   type EIP1193Provider,
 } from "viem";
-import { arcTestnet, ARC_TESTNET_CHAIN_ID, erc20Abi, memoAbi, MEMO_ADDRESS, transferCalldata, USDC_ADDRESS } from "./arc";
+import {
+  arcTestnet,
+  ARC_TESTNET_CHAIN_ID,
+  BATCHER_ADDRESS,
+  batchTransferCalldata,
+  erc20Abi,
+  memoAbi,
+  MEMO_ADDRESS,
+  TOKEN_ADDRESS,
+  transferCalldata,
+  USDC_ADDRESS,
+  type Token,
+} from "./arc";
 import type { Hex } from "./types";
 
 declare global {
@@ -72,16 +84,29 @@ export async function usdcBalance(address: Hex): Promise<bigint> {
   return browserClient.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [address] });
 }
 
-/** Send USDC to `to` through Arc's Memo contract so the transfer carries the invoice fingerprint. */
-export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId: Hex, memoData: Hex): Promise<Hex> {
+export async function tokenBalance(address: Hex, token: Token): Promise<bigint> {
+  return browserClient.readContract({ address: TOKEN_ADDRESS[token], abi: erc20Abi, functionName: "balanceOf", args: [address] });
+}
+
+/** Send USDC or EURC to `to` through Arc's Memo contract so the transfer carries the invoice fingerprint. */
+export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId: Hex, memoData: Hex, token: Token = "USDC"): Promise<Hex> {
   await ensureArcTestnet();
   return wallet(account).writeContract({
     account,
     address: MEMO_ADDRESS,
     abi: memoAbi,
     functionName: "memo",
-    args: [USDC_ADDRESS, transferCalldata(to, amount), memoId, memoData],
+    args: [TOKEN_ADDRESS[token], transferCalldata(to, amount), memoId, memoData],
   });
+}
+
+/**
+ * Pay several wallets in one atomic transaction through Arc's Multicall3From. Each transfer is
+ * sent from the caller's own wallet (sender-preserving), so the batch stays non-custodial.
+ */
+export async function sendBatch(account: Hex, token: Token, transfers: { to: Hex; amount: bigint }[]): Promise<Hex> {
+  await ensureArcTestnet();
+  return wallet(account).sendTransaction({ account, to: BATCHER_ADDRESS, data: batchTransferCalldata(token, transfers) });
 }
 
 export async function waitForTx(hash: Hex) {

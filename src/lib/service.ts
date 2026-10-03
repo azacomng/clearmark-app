@@ -8,7 +8,11 @@ import { latestBlock, scanInbound, verifyTx } from "./chain";
 import { CLASS_LABEL, pillClass, type InvoiceState } from "./engine";
 import {
   ensureMerchant,
+  invoicePayouts,
   invoiceState,
+  markPayoutSent,
+  payoutPlan,
+  unconvertedUsdc,
   LedgerError,
   merchantInvoices,
   merchantPayments,
@@ -18,9 +22,11 @@ import {
 } from "./ledger";
 import { checkoutCheck } from "./limits";
 import { earlyDeadline, termsLine } from "./terms";
+import { currencyOf, nativeToken, rateLine, tokenOf, unitOf } from "./fx";
+import { eurPerUsdc } from "./rates";
 import { suggestMatches } from "./matching";
 import { big, fmt, str, sum } from "./money";
-import type { Db, Hex, Invoice, Payment, Refund } from "./types";
+import type { Db, Hex, Invoice, Payment, Payout, Refund } from "./types";
 
 export const DEMO = process.env.CLEARMARK_DEMO === "1";
 
@@ -41,7 +47,21 @@ export async function signInMerchant(address: Hex) {
 
 export function invoiceView(db: Db, inv: Invoice, now = new Date()) {
   const state = invoiceState(db, inv, now);
-  return { ...inv, state, pill: pillClass(state.status), termsLine: termsLine(inv), earlyDeadline: earlyDeadline(inv) };
+  const unit = unitOf(inv);
+  const plan = inv.splits?.length ? payoutPlan(db, inv, now) : null;
+  return {
+    ...inv,
+    currency: currencyOf(inv),
+    unit,
+    splits: inv.splits ?? [],
+    state,
+    pill: pillClass(state.status),
+    termsLine: termsLine(inv, unit),
+    earlyDeadline: earlyDeadline(inv),
+    payouts: invoicePayouts(db, inv.id),
+    payoutPlan: plan ? { base: str(plan.base), token: plan.token, lines: plan.lines } : null,
+    unconvertedUsdc: str(unconvertedUsdc(db, inv)),
+  };
 }
 export type InvoiceView = ReturnType<typeof invoiceView>;
 
@@ -61,6 +81,10 @@ export function paymentView(db: Db, p: Payment, now = new Date()) {
     key: paymentKey(p),
     invoiceNumber: inv?.number ?? null,
     customerName: inv?.customerName ?? null,
+    token: tokenOf(p),
+    /** Value toward the invoice, in invoice units (differs from amount only with FX). */
+    value: cls?.amount ?? p.amount,
+    unit: inv ? unitOf(inv) : tokenOf(p),
     cls: cls?.cls ?? null,
     clsLabel: cls ? CLASS_LABEL[cls.cls] : null,
     surplus: cls?.surplus ?? "0",
@@ -83,6 +107,7 @@ export interface HistoryRow {
   pill: string;
   flagged: boolean;
   amount: string; // signed units
+  token: "USDC" | "EURC";
   txHash: Hex | null;
   source: "chain" | "demo";
 }
@@ -122,6 +147,7 @@ export function historyRows(db: Db, merchant: Hex, now = new Date()): HistoryRow
       invoiceNumber: v.invoiceNumber,
       ...s,
       amount: p.amount,
+      token: tokenOf(p),
       txHash: p.txHash,
       source: p.source,
     });
@@ -142,9 +168,33 @@ export function historyRows(db: Db, merchant: Hex, now = new Date()): HistoryRow
       pill: "s-over",
       flagged: false,
       amount: str(-big(r.amount)),
+      token: r.token ?? "USDC",
       txHash: r.txHash,
       source: r.source,
     });
+  }
+  for (const po of Object.values(db.payouts ?? {})) {
+    if (po.merchant !== merchant || po.status !== "sent") continue;
+    const inv = db.invoices[po.invoiceId];
+    po.lines.forEach((l, i) =>
+      rows.push({
+        kind: "out",
+        id: `${po.id}.${i}`,
+        receipt: `/r/s/${po.id}.${i}`,
+        at: po.sentAt ?? po.createdAt,
+        counterparty: l.label,
+        address: l.address,
+        invoiceId: po.invoiceId,
+        invoiceNumber: inv?.number ?? null,
+        status: "PAYOUT",
+        pill: "s-partial",
+        flagged: false,
+        amount: str(-big(l.amount)),
+        token: po.token,
+        txHash: po.txHash,
+        source: po.source,
+      }),
+    );
   }
   return rows.sort((a, b) => b.at.localeCompare(a.at));
 }
@@ -155,7 +205,9 @@ export function dashboard(db: Db, merchant: Hex, now = new Date()) {
   const payments = merchantPayments(db, merchant);
   const month = now.toISOString().slice(0, 7);
   const counted = payments.filter((p) => !p.hold || p.hold.resolution === "accepted");
-  const receivedMonth = sum(counted.filter((p) => p.timestamp.startsWith(month)).map((p) => big(p.amount)));
+  const thisMonth = counted.filter((p) => p.timestamp.startsWith(month));
+  const receivedMonth = sum(thisMonth.filter((p) => tokenOf(p) === "USDC").map((p) => big(p.amount)));
+  const receivedMonthEurc = sum(thisMonth.filter((p) => tokenOf(p) === "EURC").map((p) => big(p.amount)));
   const tagged = payments.filter((p) => p.matchMethod === "memo").length;
   const outstanding = invoices.filter((i) => ["open", "partial", "underpaid"].includes(i.state.status));
   const review = reviewItems(db, merchant, now);
@@ -166,6 +218,7 @@ export function dashboard(db: Db, merchant: Hex, now = new Date()) {
     demo: DEMO,
     kpis: {
       receivedMonth: str(receivedMonth),
+      receivedMonthEurc: str(receivedMonthEurc),
       paymentsMonth: counted.filter((p) => p.timestamp.startsWith(month)).length,
       autoMatched: payments.length ? Math.round((tagged / payments.length) * 1000) / 10 : null,
       autoMatchedOf: [tagged, payments.length],
@@ -217,7 +270,7 @@ export function publicInvoice(db: Db, inv: Invoice, now = new Date()) {
   const payments = merchantPayments(db, inv.merchant)
     .filter((p) => p.invoiceId === inv.id)
     .map((p) => paymentView(db, p, now))
-    .map((p) => ({ key: p.key, amount: p.amount, timestamp: p.timestamp, txHash: p.txHash, clsLabel: p.clsLabel, held: !!p.hold && !p.hold.resolution, source: p.source }));
+    .map((p) => ({ key: p.key, amount: p.amount, token: p.token, timestamp: p.timestamp, txHash: p.txHash, clsLabel: p.clsLabel, held: !!p.hold && !p.hold.resolution, source: p.source }));
   return {
     id: inv.id,
     number: inv.number,
@@ -227,8 +280,11 @@ export function publicInvoice(db: Db, inv: Invoice, now = new Date()) {
     tolerance: inv.tolerance,
     dueDate: inv.dueDate,
     allowSplit: inv.allowSplit,
+    currency: currencyOf(inv),
+    unit: unitOf(inv),
+    token: nativeToken(currencyOf(inv)),
     terms: inv.terms ?? null,
-    termsLine: termsLine(inv),
+    termsLine: termsLine(inv, unitOf(inv)),
     earlyDeadline: earlyDeadline(inv),
     memoId: inv.memoId,
     voided: inv.voided,
@@ -304,10 +360,24 @@ export async function confirmRefundTx(merchant: Hex, refundId: string, txHash: H
   return write((db) => {
     const r = db.refunds[refundId];
     if (!r || r.merchant !== merchant) throw new LedgerError("Refund not found", 404);
-    const t = v.transfers.find((x) => x.from === merchant && x.to === r.to) ?? v.transfers[0];
+    const tok = r.token ?? "USDC";
+    const t = v.transfers.find((x) => x.from === merchant && x.to === r.to && x.token === tok) ?? v.transfers.find((x) => x.from === merchant && x.to === r.to) ?? v.transfers[0];
     if (!t) throw new LedgerError("That transaction has no USDC transfer.");
     return markRefundSent(db, merchant, refundId, { ...t, timestamp: v.timestamp });
   });
+}
+
+export async function confirmPayoutTx(merchant: Hex, payoutId: string, txHash: Hex): Promise<Payout> {
+  const v = await verifyTx(txHash);
+  if (!v) throw new LedgerError("That transaction isn't on Arc testnet yet. Try again in a moment.", 404);
+  if (v.status !== "success") throw new LedgerError("That transaction reverted, so nothing was paid.");
+  return write((db) => markPayoutSent(db, merchant, payoutId, { txHash, blockNumber: v.blockNumber, timestamp: v.timestamp, transfers: v.transfers }));
+}
+
+/** The live EUR/USDC rate, for display and quotes. */
+export async function currentRate() {
+  const r = await eurPerUsdc();
+  return r ? { rate: r.rate.toString(), source: r.source, line: rateLine(r.rate) } : null;
 }
 
 // ---------- demo mode ----------
