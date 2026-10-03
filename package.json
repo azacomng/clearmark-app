@@ -1,0 +1,31 @@
+{
+  "name": "clearmark",
+  "version": "0.1.0",
+  "private": true,
+  "description": "USDC invoice verification and automatic reconciliation on Arc (testnet).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "send-test-payment": "node --experimental-strip-types scripts/send-test-payment.mts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "viem": "^2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

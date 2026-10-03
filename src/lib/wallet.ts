@@ -1,0 +1,96 @@
+"use client";
+// Browser wallet helpers (MetaMask, Rabby, any injected EIP-1193 wallet). Keys never leave the wallet.
+
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  numberToHex,
+  type EIP1193Provider,
+} from "viem";
+import { arcTestnet, ARC_TESTNET_CHAIN_ID, erc20Abi, memoAbi, MEMO_ADDRESS, transferCalldata, USDC_ADDRESS } from "./arc";
+import type { Hex } from "./types";
+
+declare global {
+  interface Window {
+    ethereum?: EIP1193Provider;
+  }
+}
+
+export const browserClient = createPublicClient({ chain: arcTestnet, transport: http() });
+
+export function hasWallet() {
+  return typeof window !== "undefined" && !!window.ethereum;
+}
+
+function provider(): EIP1193Provider {
+  if (!window.ethereum) throw new Error("No wallet found. Install MetaMask or Rabby to continue.");
+  return window.ethereum;
+}
+
+export async function connect(): Promise<Hex> {
+  const [a] = (await provider().request({ method: "eth_requestAccounts" })) as Hex[];
+  if (!a) throw new Error("No account selected in your wallet.");
+  return a.toLowerCase() as Hex;
+}
+
+/** Switch the wallet to Arc testnet, adding the network if the wallet doesn't know it yet. */
+export async function ensureArcTestnet() {
+  const p = provider();
+  const current = Number(await p.request({ method: "eth_chainId" }));
+  if (current === ARC_TESTNET_CHAIN_ID) return;
+  const chainId = numberToHex(ARC_TESTNET_CHAIN_ID);
+  try {
+    await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 4902) throw e;
+    await p.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId,
+          chainName: "Arc Testnet",
+          nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+          rpcUrls: arcTestnet.rpcUrls.default.http as unknown as string[],
+          blockExplorerUrls: [arcTestnet.blockExplorers!.default.url],
+        },
+      ],
+    });
+  }
+}
+
+function wallet(account: Hex) {
+  return createWalletClient({ account, chain: arcTestnet, transport: custom(provider()) });
+}
+
+export async function signText(account: Hex, message: string): Promise<Hex> {
+  return wallet(account).signMessage({ account, message });
+}
+
+export async function usdcBalance(address: Hex): Promise<bigint> {
+  return browserClient.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: "balanceOf", args: [address] });
+}
+
+/** Send USDC to `to` through Arc's Memo contract so the transfer carries the invoice fingerprint. */
+export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId: Hex, memoData: Hex): Promise<Hex> {
+  await ensureArcTestnet();
+  return wallet(account).writeContract({
+    account,
+    address: MEMO_ADDRESS,
+    abi: memoAbi,
+    functionName: "memo",
+    args: [USDC_ADDRESS, transferCalldata(to, amount), memoId, memoData],
+  });
+}
+
+export async function waitForTx(hash: Hex) {
+  return browserClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+}
+
+export function friendlyError(e: unknown): string {
+  const err = e as { shortMessage?: string; message?: string; code?: number };
+  if (err?.code === 4001 || /rejected|denied/i.test(err?.message ?? "")) return "You cancelled the request in your wallet.";
+  if (/insufficient/i.test(err?.message ?? "")) return "Not enough USDC in this wallet. Get testnet USDC from faucet.circle.com.";
+  return err?.shortMessage ?? err?.message?.split("\n")[0] ?? "Something went wrong.";
+}
