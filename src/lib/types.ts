@@ -199,7 +199,8 @@ export interface Db {
   invoices: Record<string, Invoice>;
   payments: Record<string, Payment>;
   refunds: Record<string, Refund>;
-  nonces: Record<string, { address: Hex; expires: number }>;
+  /** One-time sign-in challenges. `message` is the exact Sign-In with Ethereum text the wallet signs. */
+  nonces: Record<string, { address: Hex; expires: number; message?: string }>;
   payouts?: Record<string, Payout>;
   quotes?: Record<string, Quote>;
   secret?: string;
