@@ -8,7 +8,7 @@ import { reconcile, type InvoiceState } from "./engine";
 import { DEFAULT_LIMITS, inboundHold, refundNeedsApproval } from "./limits";
 import { big, fmt, str, toUnits } from "./money";
 import { parseTerms, type TermsInput } from "./terms";
-import type { Currency, Db, Hex, Invoice, Limits, Merchant, Payment, Payout, Quote, Refund, Resolution, Split, Terms } from "./types";
+import type { Currency, Db, Hex, Invoice, Limits, Merchant, Payment, Payout, Quote, Refund, Resolution, Split, Terms, VoidRecord } from "./types";
 
 export class LedgerError extends Error {
   constructor(message: string, public status = 400) {
@@ -258,6 +258,7 @@ function getInvoice(db: Db, merchant: Hex, invoiceId: string): Invoice {
 /** Review inbox: confirm which invoice an untagged transfer belongs to. */
 export function assignPayment(db: Db, merchant: Hex, paymentId: string, invoiceId: string | null) {
   const p = getPayment(db, merchant, paymentId);
+  if (p.voided) throw new LedgerError("This payment was voided.");
   if (p.matchMethod === "memo") throw new LedgerError("This payment was matched by its onchain memo and can't be reassigned.");
   if (invoiceId) {
     const inv = getInvoice(db, merchant, invoiceId);
@@ -282,6 +283,7 @@ export function resolveHold(
   rate?: { rate: bigint; source: string } | null,
 ) {
   const p = getPayment(db, merchant, paymentId);
+  if (p.voided) throw new LedgerError("This payment was voided.");
   if (!p.hold || p.hold.resolution) throw new LedgerError("This payment isn't waiting for review.");
   if (action === "accept") {
     if (p.hold.reason === "fx_missing") {
@@ -347,6 +349,7 @@ export function createRefund(
 ): Refund {
   const m = getMerchant(db, merchant);
   const p = getPayment(db, merchant, paymentId);
+  if (p.voided) throw new LedgerError("This payment was voided, so there's nothing to refund.");
   let amount: bigint;
   let invoiceUnits: bigint | null = null;
   if (skipSurplusCheck) {
@@ -491,12 +494,57 @@ export function setMerchantName(db: Db, merchant: Hex, name: string) {
   return m;
 }
 
-export function voidInvoice(db: Db, merchant: Hex, invoiceId: string, now: Date) {
+function voidRecord(merchant: Hex, reason: unknown, now: Date): VoidRecord {
+  const r = String(reason ?? "").trim().replace(/\s+/g, " ");
+  if (r.length < 3) throw new LedgerError("Add a short reason, so the history shows why.");
+  if (r.length > 200) throw new LedgerError("Keep the reason under 200 characters.");
+  return { reason: r, by: merchant, at: now.toISOString() };
+}
+
+/** Void an invoice that hasn't received money. It stays in history, crossed out, with the reason. */
+export function voidInvoice(db: Db, merchant: Hex, invoiceId: string, reason: unknown, now: Date) {
   const inv = getInvoice(db, merchant, invoiceId);
+  if (inv.voided) throw new LedgerError("This invoice is already void.");
   const st = invoiceState(db, inv, now);
   if (big(st.received) > 0n) throw new LedgerError("This invoice already received money, so it can't be voided.");
+  inv.voidInfo = voidRecord(merchant, reason, now);
   inv.voided = true;
   return inv;
+}
+
+/**
+ * Void (dismiss) a payment: it stops counting toward its invoice and leaves the review inbox, but stays
+ * in history, crossed out. The money isn't moved; a payment that has been refunded or credited can't be
+ * voided, and neither can one whose removal would undo a refund or credit on another payment.
+ */
+export function voidPayment(db: Db, merchant: Hex, paymentId: string, reason: unknown, now: Date): Payment {
+  const p = getPayment(db, merchant, paymentId);
+  if (p.voided) throw new LedgerError("This payment is already void.");
+  const record = voidRecord(merchant, reason, now);
+  if (Object.values(db.refunds).some((f) => f.paymentId === p.id)) {
+    throw new LedgerError("This payment has a refund, so it can't be voided. Cancel the refund first if it hasn't been sent.");
+  }
+  const inv = p.invoiceId ? db.invoices[p.invoiceId] : undefined;
+  if (inv?.resolutions.some((r) => r.paymentId === p.id)) throw new LedgerError("Part of this payment is kept as customer credit, so it can't be voided.");
+  if (inv) {
+    // Removing a payment can re-classify the others; refunds and credits already on them must still fit.
+    p.voided = record;
+    const st = invoiceState(db, inv, now);
+    const broken = st.payments.some((c) => {
+      const handled =
+        inv.resolutions.filter((r) => r.paymentId === c.id).reduce((a, r) => a + big(r.amount), 0n) +
+        Object.values(db.refunds)
+          .filter((f) => f.paymentId === c.id && f.status !== "sent")
+          .reduce((a, f) => a + big(f.invoiceUnits ?? f.amount), 0n);
+      return handled > big(c.surplus);
+    });
+    if (broken) {
+      p.voided = null;
+      throw new LedgerError("Voiding this would undo a refund or credit on another payment of this invoice.");
+    }
+  }
+  p.voided = record;
+  return p;
 }
 
 // ---------- Quotes (EUR invoices paid in USDC) ----------

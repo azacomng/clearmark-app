@@ -29,6 +29,13 @@ export interface Merchant {
   publicAmounts?: boolean;
 }
 
+/** Who voided an invoice or a payment, when and why. Voided items stay in history, crossed out. */
+export interface VoidRecord {
+  reason: string;
+  by: Hex;
+  at: string;
+}
+
 export interface Resolution {
   id: string;
   kind: "write_off" | "credit" | "refund";
@@ -71,6 +78,8 @@ export interface Invoice {
   memoId: Hex;
   createdAt: string;
   voided: boolean;
+  /** Missing on invoices voided before reasons were recorded. */
+  voidInfo?: VoidRecord | null;
   resolutions: Resolution[];
   /** Optional early-pay discount and late fee. Missing on invoices made before Smart Terms. */
   terms?: Terms | null;
@@ -120,6 +129,8 @@ export interface Payment {
   fx?: { rate: Units; quoteId: string | null; source: string } | null;
   /** Source chain for a payment bridged to Arc before it was paid (e.g. "Base Sepolia"). */
   via?: string | null;
+  /** Dismissed by the merchant: it no longer counts toward any invoice. The money itself isn't moved. */
+  voided?: VoidRecord | null;
 }
 
 export type RefundStatus = "pending_approval" | "ready" | "sent";

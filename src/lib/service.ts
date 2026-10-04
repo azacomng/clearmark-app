@@ -5,7 +5,7 @@ import "server-only";
 import { keccak256, stringToHex } from "viem";
 import { read, write } from "./store";
 import { latestBlock, scanInbound, verifyTx } from "./chain";
-import { CLASS_LABEL, pillClass, type InvoiceState } from "./engine";
+import { CLASS_LABEL, countsTowardInvoice, pillClass, type InvoiceState } from "./engine";
 import {
   ensureMerchant,
   invoicePayouts,
@@ -113,6 +113,7 @@ export interface HistoryRow {
 }
 
 function rowStatus(v: PaymentView): { status: string; pill: string; flagged: boolean } {
+  if (v.voided) return { status: "VOIDED", pill: "s-open", flagged: false };
   if (v.hold && !v.hold.resolution) return { status: "HELD", pill: "s-review", flagged: true };
   if (v.hold?.resolution === "returned") return { status: "RETURNED", pill: "s-over", flagged: false };
   if (!v.invoiceId) return { status: "NEEDS REVIEW", pill: "s-review", flagged: true };
@@ -204,7 +205,7 @@ export function dashboard(db: Db, merchant: Hex, now = new Date()) {
   const invoices = merchantInvoices(db, merchant).map((i) => invoiceView(db, i, now));
   const payments = merchantPayments(db, merchant);
   const month = now.toISOString().slice(0, 7);
-  const counted = payments.filter((p) => !p.hold || p.hold.resolution === "accepted");
+  const counted = payments.filter(countsTowardInvoice);
   const thisMonth = counted.filter((p) => p.timestamp.startsWith(month));
   const receivedMonth = sum(thisMonth.filter((p) => tokenOf(p) === "USDC").map((p) => big(p.amount)));
   const receivedMonthEurc = sum(thisMonth.filter((p) => tokenOf(p) === "EURC").map((p) => big(p.amount)));
@@ -237,9 +238,9 @@ export function reviewItems(db: Db, merchant: Hex, now = new Date()) {
   const all = merchantPayments(db, merchant);
   const invoices = merchantInvoices(db, merchant);
   const unmatched = all
-    .filter((p) => !p.invoiceId && !(p.hold && p.hold.resolution === "returned"))
+    .filter((p) => !p.invoiceId && !p.voided && !(p.hold && p.hold.resolution === "returned"))
     .map((p) => ({ ...paymentView(db, p, now), suggestions: suggestMatches(p, invoices, all, now) }));
-  const held = all.filter((p) => p.hold && !p.hold.resolution && p.invoiceId).map((p) => paymentView(db, p, now));
+  const held = all.filter((p) => p.hold && !p.hold.resolution && p.invoiceId && !p.voided).map((p) => paymentView(db, p, now));
   const actionable = invoices
     .map((i) => invoiceView(db, i, now))
     .filter((i) => ["duplicate", "overpaid", "underpaid"].includes(i.state.status));
