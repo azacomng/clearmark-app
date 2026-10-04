@@ -46,3 +46,13 @@ export function asTxHash(v: unknown): Hex {
   if (typeof v !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(v)) throw new LedgerError("Invalid transaction hash.");
   return v.toLowerCase() as Hex;
 }
+
+/**
+ * The site's origin for this request. The host comes from the request itself (on Vercel the platform
+ * routes by it, so it can't name another site); only the scheme is taken from the proxy's header.
+ */
+export function requestOrigin(req: Request): string {
+  const url = new URL(req.url);
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https" ? "https" : url.protocol.replace(":", "");
+  return `${proto}://${url.host}`;
+}
