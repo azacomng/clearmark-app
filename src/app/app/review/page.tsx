@@ -60,6 +60,27 @@ export default function ReviewInbox() {
     if (reason !== null) await act(p.id, { action: "void", payment: p.key, reason });
   }
 
+  async function removeDemo(p: Review["unmatched"][number]) {
+    const ok = await ask({
+      title: `Delete this simulated ${fmt(p.amount)} ${p.token} payment?`,
+      body: <>It&apos;s removed with its receipt, as if it never arrived. Only simulated payments can be deleted.</>,
+      confirmLabel: "Delete payment",
+      danger: true,
+    });
+    if (ok === null) return;
+    setBusy(p.id);
+    setErr(null);
+    try {
+      await api("/api/demo/delete", { method: "POST", json: { payment: p.key } });
+      await reload();
+      refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
       {dialog}
@@ -114,7 +135,11 @@ export default function ReviewInbox() {
                 {p.hold && !p.hold.resolution ? (
                   <button className="btn sm danger" disabled={!!busy} onClick={() => act(p.id, { action: "return", payment: p.key })}>Return to sender</button>
                 ) : null}
-                <button className="btn sm danger" disabled={!!busy} onClick={() => dismiss(p)}>Void</button>
+                {p.source === "demo" ? (
+                  <button className="btn sm danger" disabled={!!busy} onClick={() => removeDemo(p)}>Delete</button>
+                ) : (
+                  <button className="btn sm danger" disabled={!!busy} onClick={() => dismiss(p)}>Void</button>
+                )}
               </div>
             </div>
           ))}

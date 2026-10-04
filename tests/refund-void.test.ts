@@ -6,6 +6,7 @@ import {
   cancelRefund,
   createInvoice,
   createRefund,
+  deleteDemoPayment,
   ensureMerchant,
   invoiceState,
   markRefundSent,
@@ -131,5 +132,38 @@ describe("void with a reason", () => {
     expect(() => voidPayment(db, M, first.id, "Sent by mistake", now)).toThrow(/undo a refund or credit/);
     expect(db.payments[first.id].voided).toBeFalsy();
     expect(invoiceState(db, inv, now).status).toBe("paid");
+  });
+});
+
+describe("delete a simulated payment", () => {
+  it("removes it with its simulated refund and re-judges the invoice", () => {
+    const { db, inv, pay } = setup();
+    pay("4");
+    const over = pay("4.80"); // "Over 120%" after an exact payment
+    const r = createRefund(db, M, over.id, null, "manual", now);
+    sendDemo(db, r.id);
+    deleteDemoPayment(db, M, over.id, now);
+    expect(db.payments[over.id]).toBeUndefined();
+    expect(db.refunds[r.id]).toBeUndefined();
+    expect(inv.resolutions).toHaveLength(0);
+    const st = invoiceState(db, inv, now);
+    expect(st.status).toBe("paid");
+    expect(st.variant).toBeNull();
+  });
+
+  it("won't delete a real payment", () => {
+    const { db, inv } = setup();
+    const real = recordTransfer(db, { ...transfer("4", inv.memoId), source: "chain" }, now)!;
+    expect(() => deleteDemoPayment(db, M, real.id, now)).toThrow(/Only simulated/);
+  });
+
+  it("won't delete one if that would undo a credit on another payment", () => {
+    const { db, inv, pay } = setup();
+    const first = pay("4");
+    const extra = pay("6");
+    addResolution(db, M, inv.id, "credit", extra.id, now);
+    expect(() => deleteDemoPayment(db, M, first.id, now)).toThrow(/undo a refund or credit/);
+    expect(db.payments[first.id]).toBeDefined();
+    expect(inv.resolutions).toHaveLength(1);
   });
 });

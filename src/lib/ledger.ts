@@ -529,22 +529,50 @@ export function voidPayment(db: Db, merchant: Hex, paymentId: string, reason: un
   if (inv) {
     // Removing a payment can re-classify the others; refunds and credits already on them must still fit.
     p.voided = record;
-    const st = invoiceState(db, inv, now);
-    const broken = st.payments.some((c) => {
-      const handled =
-        inv.resolutions.filter((r) => r.paymentId === c.id).reduce((a, r) => a + big(r.amount), 0n) +
-        Object.values(db.refunds)
-          .filter((f) => f.paymentId === c.id && f.status !== "sent")
-          .reduce((a, f) => a + big(f.invoiceUnits ?? f.amount), 0n);
-      return handled > big(c.surplus);
-    });
-    if (broken) {
+    if (overHandled(db, inv, now)) {
       p.voided = null;
       throw new LedgerError("Voiding this would undo a refund or credit on another payment of this invoice.");
     }
   }
   p.voided = record;
   return p;
+}
+
+/**
+ * Delete a simulated (demo) payment, with its simulated refunds and any credit kept from it, as if it
+ * never happened. Real payments can't be deleted: they happened onchain, so they can only be voided.
+ */
+export function deleteDemoPayment(db: Db, merchant: Hex, paymentId: string, now: Date) {
+  const p = getPayment(db, merchant, paymentId);
+  if (p.source !== "demo") throw new LedgerError("Only simulated payments can be deleted. Void a real payment instead.");
+  const inv = p.invoiceId ? db.invoices[p.invoiceId] : undefined;
+  if (inv && invoicePayouts(db, inv.id).length) throw new LedgerError("This invoice has a payout, so its payments can't be deleted.");
+  const own = Object.values(db.refunds).filter((f) => f.paymentId === p.id);
+  const ownRes = inv ? inv.resolutions.filter((r) => r.paymentId === p.id) : [];
+  // Removing a payment can re-classify the others; refunds and credits on them must still fit.
+  const before = { payment: p, refunds: own, resolutions: inv?.resolutions };
+  delete db.payments[p.id];
+  for (const f of own) delete db.refunds[f.id];
+  if (inv) inv.resolutions = inv.resolutions.filter((r) => !ownRes.includes(r));
+  if (inv && overHandled(db, inv, now)) {
+    db.payments[p.id] = before.payment;
+    for (const f of before.refunds) db.refunds[f.id] = f;
+    inv.resolutions = before.resolutions!;
+    throw new LedgerError("Deleting this would undo a refund or credit on another payment of this invoice.");
+  }
+  return { deleted: p.id, invoiceId: p.invoiceId };
+}
+
+/** True when some payment on the invoice has more refunded or credited than it has extra. */
+function overHandled(db: Db, inv: Invoice, now: Date): boolean {
+  return invoiceState(db, inv, now).payments.some((c) => {
+    const handled =
+      inv.resolutions.filter((r) => r.paymentId === c.id).reduce((a, r) => a + big(r.amount), 0n) +
+      Object.values(db.refunds)
+        .filter((f) => f.paymentId === c.id && f.status !== "sent")
+        .reduce((a, f) => a + big(f.invoiceUnits ?? f.amount), 0n);
+    return handled > big(c.surplus);
+  });
 }
 
 // ---------- Quotes (EUR invoices paid in USDC) ----------

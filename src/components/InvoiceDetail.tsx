@@ -139,6 +139,22 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
     await act(`vp${p.id}`, () => post("/api/review", { action: "void", payment: p.key, reason }), "Payment voided.");
   }
 
+  async function deleteDemo(p: PaymentView) {
+    const ok = await ask({
+      title: `Delete this simulated ${fmt(p.amount)} ${p.token} payment?`,
+      body: (
+        <>
+          It&apos;s removed with its receipt{refunds.some((r) => r.paymentId === p.id) ? " and its simulated refund" : ""}, and {inv.number} is
+          worked out again as if it never arrived. Only simulated payments can be deleted.
+        </>
+      ),
+      confirmLabel: "Delete payment",
+      danger: true,
+    });
+    if (ok === null) return;
+    await act(`dp${p.id}`, () => post("/api/demo/delete", { payment: p.key }), "Simulated payment deleted.");
+  }
+
   async function voidInvoice() {
     const reason = await ask({
       title: `Void ${inv.number}?`,
@@ -279,7 +295,14 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
                 <a href={txUrl(p.txHash)} target="_blank" rel="noreferrer">tx {shortHex(p.txHash)}</a>
               )}{" "}
               · <Link href={`/r/p/${p.key}`}>receipt</Link>
-              {!inv.voided && canVoid(p) ? (
+              {p.source === "demo" && !inv.payouts.length ? (
+                <>
+                  {" "}·{" "}
+                  <button className="linkish" disabled={!!busy} onClick={() => deleteDemo(p)}>
+                    delete
+                  </button>
+                </>
+              ) : !inv.voided && p.source !== "demo" && canVoid(p) ? (
                 <>
                   {" "}·{" "}
                   <button className="linkish" disabled={!!busy} onClick={() => voidPayment(p)}>
