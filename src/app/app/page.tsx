@@ -240,7 +240,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {list.map((i) => (
-                    <tr key={i.id} className={`click ${sel === i.id ? "sel" : ""}`} onClick={() => setSel(i.id)}>
+                    <tr key={i.id} className={`click ${sel === i.id ? "sel" : ""} ${i.voided ? "voided" : ""}`} onClick={() => setSel(i.id)}>
                       <td className="mono">{i.number}</td>
                       <td>{i.customerName}</td>
                       <td className={i.state.overdue ? "" : "muted"} style={i.state.overdue ? { color: "var(--warn)" } : undefined}>

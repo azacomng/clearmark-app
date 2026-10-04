@@ -60,6 +60,7 @@ export interface InvoiceState {
 }
 
 export function countsTowardInvoice(p: Payment): boolean {
+  if (p.voided) return false;
   return !p.hold || p.hold.resolution === "accepted";
 }
 

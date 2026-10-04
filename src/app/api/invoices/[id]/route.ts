@@ -24,7 +24,7 @@ export const GET = handle(async (_req: Request, ctx: Ctx) => {
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const m = await requireMerchant();
   const { id } = await ctx.params;
-  const b = await body<{ action: "write_off" | "credit" | "void" | "converted"; paymentId?: string; txHash?: string }>(req);
+  const b = await body<{ action: "write_off" | "credit" | "void" | "converted"; paymentId?: string; txHash?: string; reason?: string }>(req);
   const now = new Date();
   if (b.action === "converted") {
     // Record a Swap Kit USDC -> EURC conversion, checked onchain: USDC must have left the merchant's wallet.
@@ -36,7 +36,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     return json(await write((db) => invoiceView(db, recordConversion(db, m, id, hash, out, now), now)));
   }
   const result = await write((db) => {
-    if (b.action === "void") voidInvoice(db, m, id, now);
+    if (b.action === "void") voidInvoice(db, m, id, b.reason, now);
     else if (b.action === "write_off") addResolution(db, m, id, "write_off", null, now);
     else if (b.action === "credit") addResolution(db, m, id, "credit", b.paymentId ?? null, now);
     else throw new LedgerError("Unknown action");

@@ -97,7 +97,7 @@ export default function History() {
                 <tr><td colSpan={8} className="muted">{data.rows.length ? "Nothing matches that search." : "No transactions yet."}</td></tr>
               ) : (
                 rows.map((r) => (
-                  <tr key={r.kind + r.id}>
+                  <tr key={r.kind + r.id} className={r.status === "VOIDED" ? "voided" : undefined}>
                     <td className="muted">{when(r.at)}</td>
                     <td>{r.kind === "in" ? "Received" : r.status === "PAYOUT" ? "Payout" : "Refund"}</td>
                     <td>

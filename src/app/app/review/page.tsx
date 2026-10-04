@@ -7,6 +7,7 @@ import { api, useApi, when } from "@/lib/client";
 import { fmt } from "@/lib/money";
 import type { reviewItems } from "@/lib/service";
 import { useShell } from "@/components/AppShell";
+import { useConfirm } from "@/components/Confirm";
 import { RefundCard } from "@/components/RefundCard";
 
 type Review = ReturnType<typeof reviewItems>;
@@ -17,6 +18,7 @@ export default function ReviewInbox() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
+  const { ask, dialog } = useConfirm();
 
   useEffect(() => {
     reload();
@@ -42,8 +44,46 @@ export default function ReviewInbox() {
   if (error) return <p className="notice bad">{error}</p>;
   if (!data) return <p className="muted">Loading…</p>;
 
+  async function dismiss(p: Review["unmatched"][number]) {
+    const reason = await ask({
+      title: `Void this ${fmt(p.amount)} ${p.token} payment?`,
+      body: (
+        <>
+          It leaves this inbox and stays in your history, crossed out. No money moves: to send it back, use Return to sender or a refund instead. A
+          void can&apos;t be undone.
+        </>
+      ),
+      confirmLabel: "Void payment",
+      danger: true,
+      reason: { presets: ["Test payment", "Not a customer payment", "Sent by mistake"], placeholder: "Why is this payment void?" },
+    });
+    if (reason !== null) await act(p.id, { action: "void", payment: p.key, reason });
+  }
+
+  async function removeDemo(p: Review["unmatched"][number]) {
+    const ok = await ask({
+      title: `Delete this simulated ${fmt(p.amount)} ${p.token} payment?`,
+      body: <>It&apos;s removed with its receipt, as if it never arrived. Only simulated payments can be deleted.</>,
+      confirmLabel: "Delete payment",
+      danger: true,
+    });
+    if (ok === null) return;
+    setBusy(p.id);
+    setErr(null);
+    try {
+      await api("/api/demo/delete", { method: "POST", json: { payment: p.key } });
+      await reload();
+      refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
+      {dialog}
       <div className="page-h">
         <div>
           <h1>Needs review</h1>
@@ -65,7 +105,7 @@ export default function ReviewInbox() {
           {data.unmatched.map((p) => (
             <div className="card stack" key={p.id} style={{ gap: 10 }}>
               <div className="row">
-                <b className="mono" style={{ fontSize: 18 }}>{fmt(p.amount)} USDC</b>
+                <b className="mono" style={{ fontSize: 18 }}>{fmt(p.amount)} {p.token}</b>
                 <span className="muted">from {shortHex(p.from)} · {when(p.timestamp)}</span>
                 {p.hold && !p.hold.resolution ? <span className="pill s-review">HELD · {p.hold.detail}</span> : null}
                 <span className="spacer" />
@@ -95,6 +135,11 @@ export default function ReviewInbox() {
                 {p.hold && !p.hold.resolution ? (
                   <button className="btn sm danger" disabled={!!busy} onClick={() => act(p.id, { action: "return", payment: p.key })}>Return to sender</button>
                 ) : null}
+                {p.source === "demo" ? (
+                  <button className="btn sm danger" disabled={!!busy} onClick={() => removeDemo(p)}>Delete</button>
+                ) : (
+                  <button className="btn sm danger" disabled={!!busy} onClick={() => dismiss(p)}>Void</button>
+                )}
               </div>
             </div>
           ))}

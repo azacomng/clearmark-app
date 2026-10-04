@@ -70,7 +70,7 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       inv && p.fx && needsFx(currencyOf(inv), token)
         ? `${fmt(p.amount)} ${token} = ${fmt(toInvoiceUnits(BigInt(p.amount), BigInt(p.fx.rate)))} ${unitOf(inv)} at ${rateLine(p.fx.rate)} (${p.fx.quoteId ? "rate quoted at checkout" : "rate confirmed by merchant"}; ${p.fx.source})`
         : null;
-    const seal = held ? "HELD" : !inv ? "RECEIVED" : cls === "duplicate" ? "DUPLICATE" : cls === "over" || cls === "excess" ? "OVERPAID" : cls === "part" ? "PARTIAL" : cls === "short" ? "SHORT" : "PAID";
+    const seal = p.voided ? "VOIDED" : held ? "HELD" : !inv ? "RECEIVED" : cls === "duplicate" ? "DUPLICATE" : cls === "over" || cls === "excess" ? "OVERPAID" : cls === "part" ? "PARTIAL" : cls === "short" ? "SHORT" : "PAID";
     return {
       kind: "payment",
       token,
@@ -88,7 +88,9 @@ export function receiptData(db: Db, kind: string, key: string): ReceiptData {
       merchantName: db.merchants[p.merchant]?.name ?? "Merchant",
       invoice: inv && st ? { id: inv.id, number: inv.number, title: inv.title, customerName: inv.customerName, amount: inv.amount, unit: unitOf(inv), label: st.label } : null,
       related: refunds.map((r) => ({ label: `Refund ${fmt(r.amount)} ${r.token ?? "USDC"}`, href: `/r/f/${r.id}` })),
-      note: held
+      note: p.voided
+        ? `Voided by the merchant on ${p.voided.at.slice(0, 10)}. It no longer counts toward any invoice.`
+        : held
         ? `Held for review: ${p.hold!.detail}`
         : cls
           ? `${CLASS_LABEL[cls]} on ${inv!.number}. Invoice is now ${st!.label}.${termsNote(st!.priceKind, st!.price, inv!.amount)}`
