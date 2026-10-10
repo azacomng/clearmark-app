@@ -159,7 +159,12 @@ export function Checkout({ id }: { id: string }) {
       if (from !== "arc") fields.via = from;
       // Plain full payments on Arc go through the ClearmarkPay contract. Part payments, rate-quoted and
       // bridged payments keep the Memo route, because their memo carries the intent, quote or source.
-      const viaContract = mode === "full" && !fx && from === "arc" && (await contractAccepts(token));
+      // If the contract can't be asked at all, still try it: a token it refuses makes the wallet's
+      // simulation fail before any payment is sent.
+      const eligible = mode === "full" && !fx && from === "arc";
+      const accepts = eligible ? await contractAccepts(account, token) : false;
+      const viaContract = eligible && accepts !== false;
+      console.info(`[clearmark] paying ${viaContract ? "through ClearmarkPay" : "through Memo"}`, { mode, fx, from, token, accepts });
       const hash = viaContract
         ? await payViaContract(account, inv.merchant.address, send, inv.memoId, token, setStage)
         : await sendWithMemo(account, inv.merchant.address, send, inv.memoId, memoText(fields), token);

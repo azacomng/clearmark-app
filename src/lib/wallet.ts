@@ -8,6 +8,7 @@ import {
   custom,
   http,
   numberToHex,
+  publicActions,
   type EIP1193Provider,
 } from "viem";
 import {
@@ -113,12 +114,26 @@ export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId
   });
 }
 
-/** Whether checkout can pay in `token` through the ClearmarkPay contract (it only accepts some tokens). */
-export async function contractAccepts(token: Token): Promise<boolean> {
+/**
+ * Whether checkout can pay in `token` through the ClearmarkPay contract (it only accepts some tokens).
+ * Asks through the connected wallet first (switched to Arc), then the public RPC. Returns null when
+ * neither answers, so the caller can tell "the contract said no" apart from "couldn't ask".
+ */
+export async function contractAccepts(account: Hex, token: Token): Promise<boolean | null> {
   if (!CLEARMARK_PAY_ADDRESS) return false;
-  return browserClient
-    .readContract({ address: CLEARMARK_PAY_ADDRESS, abi: clearmarkPayAbi, functionName: "isAllowedToken", args: [TOKEN_ADDRESS[token]] })
-    .catch(() => false);
+  const args = { address: CLEARMARK_PAY_ADDRESS, abi: clearmarkPayAbi, functionName: "isAllowedToken", args: [TOKEN_ADDRESS[token]] } as const;
+  try {
+    await ensureArcTestnet();
+    return await wallet(account).extend(publicActions).readContract(args);
+  } catch (e) {
+    console.warn("[clearmark] contract check through the wallet failed", e);
+  }
+  try {
+    return await browserClient.readContract(args);
+  } catch (e) {
+    console.warn("[clearmark] contract check through the public RPC failed", e);
+    return null;
+  }
 }
 
 /**
