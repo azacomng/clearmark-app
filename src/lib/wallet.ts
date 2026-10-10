@@ -6,6 +6,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  fallback,
   http,
   numberToHex,
   publicActions,
@@ -151,7 +152,7 @@ export async function payViaContract(
   if (!CLEARMARK_PAY_ADDRESS) throw new Error("The Clearmark payment contract isn't set up.");
   await ensureArcTestnet();
   const tokenAddress = TOKEN_ADDRESS[token];
-  const allowance = await browserClient
+  const allowance = await chainReader()
     .readContract({ address: tokenAddress, abi: erc20Abi, functionName: "allowance", args: [account, CLEARMARK_PAY_ADDRESS] })
     .catch(() => 0n);
   if (allowance < amount) {
@@ -186,8 +187,19 @@ export async function sendBatch(account: Hex, token: Token, transfers: { to: Hex
   return wallet(account).sendTransaction({ account, to: BATCHER_ADDRESS, data: batchTransferCalldata(token, transfers) });
 }
 
+/**
+ * Reads Arc through the connected wallet's own RPC first, then the public RPC. Some browsers can't
+ * reach the public RPC (privacy extensions, network filters) while the wallet still can. Use it only
+ * once the wallet is on Arc, e.g. after ensureArcTestnet or right after the wallet sent a transaction.
+ */
+function chainReader() {
+  const p = active ?? (typeof window !== "undefined" ? window.ethereum : undefined);
+  if (!p) return browserClient;
+  return createPublicClient({ chain: arcTestnet, transport: fallback([custom(p), http()]) });
+}
+
 export async function waitForTx(hash: Hex) {
-  return browserClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+  return chainReader().waitForTransactionReceipt({ hash, timeout: 90_000 });
 }
 
 export function friendlyError(e: unknown): string {
