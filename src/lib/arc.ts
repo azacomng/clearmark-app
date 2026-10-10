@@ -38,6 +38,15 @@ export const USDC_ADDRESS: Hex = "0x3600000000000000000000000000000000000000";
 export const EURC_ADDRESS: Hex = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
 /** Arc's predeployed Memo contract. Preserves msg.sender for the wrapped call. */
 export const MEMO_ADDRESS: Hex = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
+/**
+ * Clearmark's own payment contract (ClearmarkPay, verified on the Arc testnet explorer).
+ * payInvoice(token, merchant, amount, invoiceId) moves the token straight from payer to merchant
+ * and emits InvoicePaid, so it never holds funds. Set NEXT_PUBLIC_CLEARMARK_PAY_ADDRESS to use a
+ * different deployment, or to "off" to send every payment through the Memo contract instead.
+ */
+const payEnv = process.env.NEXT_PUBLIC_CLEARMARK_PAY_ADDRESS?.trim();
+export const CLEARMARK_PAY_ADDRESS: Hex | null =
+  payEnv === "off" ? null : ((payEnv || "0x5de9f147cFC0406d1F23B3a2EEDfC8cF133dfDe8") as Hex);
 /** Arc's sender-preserving batcher (Multicall3From). Every subcall sees the sending EOA as msg.sender. */
 export const BATCHER_ADDRESS: Hex = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
 
@@ -70,6 +79,12 @@ export const memoAbi = parseAbi([
   "function memo(address target, bytes data, bytes32 memoId, bytes memoData)",
   "event BeforeMemo(uint256 indexed memoIndex)",
   "event Memo(address indexed sender, address indexed target, bytes32 callDataHash, bytes32 indexed memoId, bytes memo, uint256 memoIndex)",
+]);
+
+export const clearmarkPayAbi = parseAbi([
+  "function payInvoice(address token, address merchant, uint256 amount, bytes32 invoiceId)",
+  "function isAllowedToken(address token) view returns (bool)",
+  "event InvoicePaid(bytes32 indexed invoiceId, address indexed payer, address indexed merchant, address token, uint256 amount)",
 ]);
 
 export { erc20Abi };
@@ -132,8 +147,9 @@ export interface ExtractedTransfer {
 }
 
 /**
- * Pull every USDC and EURC transfer out of a transaction's logs and attach the Memo that wrapped it,
- * if any. A Memo is tied to its transfer by callDataHash = keccak256(transfer calldata).
+ * Pull every USDC and EURC transfer out of a transaction's logs and attach the invoice tag that came
+ * with it, if any. A Memo is tied to its transfer by callDataHash = keccak256(transfer calldata).
+ * A ClearmarkPay InvoicePaid event is tied to the transfer it caused by token, payer, merchant and amount.
  */
 export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] {
   const memos: { target: string; callDataHash: Hex; memoId: Hex; memo: Hex; used: boolean }[] = [];
@@ -146,6 +162,20 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
       }
     } catch {
       /* not a Memo event */
+    }
+  }
+  const paid: { token: string; payer: string; merchant: string; amount: bigint; invoiceId: Hex; used: boolean }[] = [];
+  const payAddress = CLEARMARK_PAY_ADDRESS?.toLowerCase();
+  for (const log of logs) {
+    if (!payAddress || log.address.toLowerCase() !== payAddress) continue;
+    try {
+      const ev = decodeEventLog({ abi: clearmarkPayAbi, data: log.data, topics: log.topics });
+      if (ev.eventName === "InvoicePaid") {
+        const { token, payer, merchant, amount, invoiceId } = ev.args;
+        paid.push({ token: token.toLowerCase(), payer: payer.toLowerCase(), merchant: merchant.toLowerCase(), amount, invoiceId, used: false });
+      }
+    } catch {
+      /* not an InvoicePaid event */
     }
   }
   const out: ExtractedTransfer[] = [];
@@ -163,6 +193,12 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
     const hash = keccak256(transferCalldata(getAddress(to), value));
     const memo = memos.find((m) => !m.used && m.target === log.address.toLowerCase() && m.callDataHash === hash);
     if (memo) memo.used = true;
+    const pay = memo
+      ? undefined
+      : paid.find(
+          (p) => !p.used && p.token === log.address.toLowerCase() && p.payer === from.toLowerCase() && p.merchant === to.toLowerCase() && p.amount === value,
+        );
+    if (pay) pay.used = true;
     out.push({
       txHash,
       logIndex: log.logIndex ?? 0,
@@ -170,7 +206,7 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
       from: from.toLowerCase() as Hex,
       to: to.toLowerCase() as Hex,
       amount: value,
-      memoId: memo?.memoId ?? null,
+      memoId: memo?.memoId ?? pay?.invoiceId ?? null,
       memoData: memo?.memo ?? null,
       token,
     });

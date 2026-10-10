@@ -8,7 +8,7 @@ import { toTokenUnits } from "@/lib/fx";
 import { api, date, useApi, when } from "@/lib/client";
 import { fmt, toUnits } from "@/lib/money";
 import type { PublicInvoice } from "@/lib/service";
-import { connect, ensureArcTestnet, friendlyError, hasWallet, sendWithMemo, tokenBalance, waitForTx } from "@/lib/wallet";
+import { connect, contractAccepts, ensureArcTestnet, friendlyError, hasWallet, payViaContract, sendWithMemo, tokenBalance, waitForTx } from "@/lib/wallet";
 import { useConnectWallet } from "./WalletProvider";
 
 interface QuoteView {
@@ -157,7 +157,13 @@ export function Checkout({ id }: { id: string }) {
       const fields: Record<string, string> = { inv: inv.number, pay: mode };
       if (fx && q) fields.q = q.id;
       if (from !== "arc") fields.via = from;
-      const hash = await sendWithMemo(account, inv.merchant.address, send, inv.memoId, memoText(fields), token);
+      // Plain full payments on Arc go through the ClearmarkPay contract. Part payments, rate-quoted and
+      // bridged payments keep the Memo route, because their memo carries the intent, quote or source.
+      const viaContract = mode === "full" && !fx && from === "arc" && (await contractAccepts(token));
+      const hash = viaContract
+        ? await payViaContract(account, inv.merchant.address, send, inv.memoId, token, setStage)
+        : await sendWithMemo(account, inv.merchant.address, send, inv.memoId, memoText(fields), token);
+      setStage(null);
       setTx(hash);
       setStep("confirming");
       const t0 = performance.now();

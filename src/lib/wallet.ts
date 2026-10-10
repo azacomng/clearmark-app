@@ -15,6 +15,8 @@ import {
   ARC_TESTNET_CHAIN_ID,
   BATCHER_ADDRESS,
   batchTransferCalldata,
+  CLEARMARK_PAY_ADDRESS,
+  clearmarkPayAbi,
   erc20Abi,
   memoAbi,
   MEMO_ADDRESS,
@@ -108,6 +110,55 @@ export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId
     abi: memoAbi,
     functionName: "memo",
     args: [TOKEN_ADDRESS[token], transferCalldata(to, amount), memoId, memoData],
+  });
+}
+
+/** Whether checkout can pay in `token` through the ClearmarkPay contract (it only accepts some tokens). */
+export async function contractAccepts(token: Token): Promise<boolean> {
+  if (!CLEARMARK_PAY_ADDRESS) return false;
+  return browserClient
+    .readContract({ address: CLEARMARK_PAY_ADDRESS, abi: clearmarkPayAbi, functionName: "isAllowedToken", args: [TOKEN_ADDRESS[token]] })
+    .catch(() => false);
+}
+
+/**
+ * Pay an invoice through the ClearmarkPay contract. The payer first approves exactly `amount` (never an
+ * unlimited allowance), skipped when an earlier approval still covers it, then calls payInvoice.
+ */
+export async function payViaContract(
+  account: Hex,
+  to: Hex,
+  amount: bigint,
+  invoiceId: Hex,
+  token: Token,
+  onStage: (s: string) => void = () => {},
+): Promise<Hex> {
+  if (!CLEARMARK_PAY_ADDRESS) throw new Error("The Clearmark payment contract isn't set up.");
+  await ensureArcTestnet();
+  const tokenAddress = TOKEN_ADDRESS[token];
+  const allowance = await browserClient
+    .readContract({ address: tokenAddress, abi: erc20Abi, functionName: "allowance", args: [account, CLEARMARK_PAY_ADDRESS] })
+    .catch(() => 0n);
+  if (allowance < amount) {
+    onStage(`Step 1 of 2: allow Clearmark to send ${token} in your wallet…`);
+    const approval = await wallet(account).writeContract({
+      account,
+      address: tokenAddress,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [CLEARMARK_PAY_ADDRESS, amount],
+    });
+    onStage("Waiting for the approval to settle…");
+    const r = await waitForTx(approval);
+    if (r.status !== "success") throw new Error("The approval didn't go through. Nothing was paid.");
+    onStage("Step 2 of 2: confirm the payment in your wallet…");
+  }
+  return wallet(account).writeContract({
+    account,
+    address: CLEARMARK_PAY_ADDRESS,
+    abi: clearmarkPayAbi,
+    functionName: "payInvoice",
+    args: [tokenAddress, to, amount, invoiceId],
   });
 }
 
