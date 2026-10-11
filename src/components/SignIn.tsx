@@ -6,7 +6,7 @@ import { api } from "@/lib/client";
 import { connect, ensureArc, friendlyError, signText } from "@/lib/wallet";
 import { useConnectWallet } from "./WalletProvider";
 
-export function SignIn({ label = "Sign in with wallet", primary = true }: { label?: string; primary?: boolean }) {
+export function SignIn({ label = "Sign in with wallet", primary = true, className = "" }: { label?: string; primary?: boolean; className?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export function SignIn({ label = "Sign in with wallet", primary = true }: { labe
   }
 
   return (
-    <div className="stack" style={{ gap: 8 }}>
+    <div className={`stack ${className}`} style={{ gap: 8 }}>
       <button className={`btn ${primary ? "primary" : ""}`} onClick={go} disabled={busy}>
         {busy ? <span className="spinner" /> : null}
         {busy ? "Check your wallet…" : label}

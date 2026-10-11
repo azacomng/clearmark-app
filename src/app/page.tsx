@@ -43,6 +43,7 @@ export default async function Home() {
           <span className="chip net">Arc mainnet</span>
           <span className="chip">USDC gas</span>
           <span className="chip">finality <b>&lt;1s</b></span>
+          <SignIn label="Connect wallet" className="top-connect" />
         </div>
       </header>
 

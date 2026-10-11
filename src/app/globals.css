@@ -298,6 +298,15 @@ tbody tr:last-child td{border-bottom:0}
 /* ---------- landing ---------- */
 .land{max-width:1180px;margin:0 auto;padding:0 22px 60px}
 .land-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;margin-top:16px;border-radius:18px;border:1px solid var(--line-soft);background:rgba(9,11,24,.72);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);position:sticky;top:12px;z-index:10;box-shadow:0 20px 40px -20px rgba(0,0,0,.8)}
+/* Header connect button: a spinning gradient ring with a soft breathing halo, and a sheen that sweeps on its own. */
+.top-connect{position:relative;isolation:isolate;margin-left:6px}
+.top-connect::before,.top-connect::after{content:"";position:absolute;inset:-2px;border-radius:14px;background:conic-gradient(from var(--ang),#7F8CFF,#B57BFF,#3EE6E0,#F2CB7E,#7F8CFF);animation:ang 3.2s linear infinite;pointer-events:none}
+.top-connect::after{inset:-7px;border-radius:20px;filter:blur(14px);opacity:.55;animation:ang 3.2s linear infinite,halo 2.6s ease-in-out infinite}
+.top-connect>.btn{z-index:1;padding:9px 16px;font-size:13.5px;white-space:nowrap;animation:hue 3s ease-in-out infinite alternate}
+.top-connect>.btn.primary::after{animation:autosheen 3.6s var(--ease) infinite}
+.top-connect>.notice{position:absolute;top:calc(100% + 10px);right:0;width:280px;z-index:2}
+@keyframes halo{50%{opacity:.95;filter:blur(18px)}}
+@keyframes autosheen{0%,55%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
 .hero{display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center;padding-block:76px 70px;position:relative}
 .hero>*{position:relative;z-index:1;min-width:0}
 .hero h1{font-size:clamp(44px,6.4vw,78px);line-height:.95;margin-block:20px 22px;letter-spacing:-.045em;font-weight:700}
@@ -373,6 +382,7 @@ tbody tr:last-child td{border-bottom:0}
   .two,.hero,.features{grid-template-columns:1fr}
   .hero{padding-block:44px}
   .float-pill{display:none}
+  .top-connect{display:none}
 }
 @media (max-width:620px){
   .rc-grid{grid-template-columns:1fr}
