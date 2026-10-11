@@ -12,6 +12,7 @@ import { friendlyError } from "@/lib/wallet";
 import { useShell } from "./AppShell";
 import { ConvertCard } from "./ConvertCard";
 import { useConfirm } from "./Confirm";
+import { PayQr } from "./PayQr";
 import { PayoutCard } from "./PayoutCard";
 import { RefundCard, refundConfirm, useRefundActions } from "./RefundCard";
 
@@ -236,6 +237,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
             <Link className="btn sm" href={`/pay/${inv.id}`} target="_blank">
               Open
             </Link>
+            <PayQr link={link} title={inv.number} amount={`${BigInt(st.balance) > 0n ? fmt(st.balance) : amt} ${u}`} />
           </div>
           <span className="faint mono" style={{ fontSize: 11 }} title={inv.memoId}>
             Memo fingerprint {shortHex(inv.memoId, 10, 6)}
