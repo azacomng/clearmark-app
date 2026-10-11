@@ -61,6 +61,25 @@ Growth features:
   is off unless `NEXT_PUBLIC_CLEARMARK_SWAP_FEE_BPS` and `NEXT_PUBLIC_CLEARMARK_FEE_RECIPIENT` are set.
   Reference rates come from the ECB via frankfurter.app, or pin one with `CLEARMARK_EUR_PER_USD`.
 
+## Accounting: Xero and QuickBooks
+
+The **Accounting** page sends invoices and payments to Xero or QuickBooks Online in two ways:
+
+- **Files, no connection needed**: an invoices file in each tool's import format, and a bank-statement file per
+  token (USDC, EURC) with the tx hash on every line. Import them in Xero or QuickBooks and match the lines.
+- **Automatic sync, with the merchant's own app**: each merchant registers their own app at
+  developer.xero.com or developer.intuit.com, adds the redirect URI the page shows
+  (`/api/accounting/<xero|quickbooks>/callback`), pastes the client ID and secret, and connects. Clearmark has no
+  shared app, so no Xero or Intuit app review is involved on Clearmark's side; QuickBooks production keys still
+  need Intuit's production questions, answered by the merchant. Keys and tokens are stored encrypted
+  (`CLEARMARK_SECRET_KEY`) and never sent to the browser. While the dashboard is open, new and changed invoices and
+  their payments are pushed every few minutes; there's also a "Sync now" button.
+
+Both use the same rules (`src/lib/accounting/model.ts`): USDC is booked as USD and EURC as EUR, 1:1. A settled
+invoice gets lines for an early-pay discount, late fee, tolerance or write-off so its payments close it exactly.
+Duplicates and overpayments aren't applied to invoices; they appear in the transactions file with their refunds.
+Simulated payments are never sent.
+
 ## How matching works
 
 Each invoice gets a fingerprint `memoId = keccak256("clearmark:v1:invoice:<id>")`. The checkout pays
@@ -89,6 +108,8 @@ src/lib/chain.ts      server reads from Arc (verify tx, scan inbound)
 src/lib/service.ts    use cases and views for the API
 src/lib/store.ts      v1 JSON file store (swap for Postgres later; only this file changes)
 src/lib/auth.ts       sign in with a wallet signature, HMAC session cookie
+src/lib/seal.ts       encryption for stored accounting keys and tokens
+src/lib/accounting/   Xero + QuickBooks: shared book rules, file exports, API clients, sync
 src/app/api/…         thin route handlers
 src/app/app/…         merchant dashboard, review inbox, history, limits
 src/app/pay/[id]      customer checkout

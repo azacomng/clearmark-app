@@ -54,7 +54,10 @@ export default function History() {
           <h1>History</h1>
           <p>Every transaction in and out. Each row links to its own receipt.</p>
         </div>
-        <a className="btn" href="/api/history?format=csv">Export CSV</a>
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn ghost" href="/app/accounting">Xero / QuickBooks</Link>
+          <a className="btn" href="/api/history?format=csv">Export CSV</a>
+        </div>
       </div>
 
       <div className="row">

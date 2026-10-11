@@ -203,5 +203,51 @@ export interface Db {
   nonces: Record<string, { address: Hex; expires: number; message?: string }>;
   payouts?: Record<string, Payout>;
   quotes?: Record<string, Quote>;
+  /** Accounting connections (Xero, QuickBooks), keyed by merchant address. Holds sealed secrets: never sent to a browser. */
+  accounting?: Record<string, Partial<Record<AccountingProvider, AccountingLink>>>;
   secret?: string;
+}
+
+export type AccountingProvider = "xero" | "quickbooks";
+
+/**
+ * A merchant's link to their own accounting system. Each merchant registers their own developer app
+ * with Xero or Intuit and pastes its keys here; Clearmark has no shared app. Secrets are sealed (seal.ts).
+ */
+export interface AccountingLink {
+  app: { clientId: string; clientSecret: string; sandbox?: boolean } | null;
+  /** OAuth state for a sign-in in progress. */
+  pending?: { state: string; expires: number } | null;
+  connection: {
+    tenantId: string;
+    tenantName: string;
+    connectionId?: string;
+    accessToken: string;
+    refreshToken: string;
+    accessExpires: number;
+    connectedAt: string;
+  } | null;
+  settings: {
+    /** Xero: revenue account code. QuickBooks: income account id (used for the "Clearmark" item). */
+    salesAccount?: string;
+    /** Where payments land, per invoice currency. Xero: bank account id. QuickBooks: deposit account id. */
+    bankAccount?: Partial<Record<Currency, string>>;
+    /** Sync automatically while the dashboard is open. Defaults to on. */
+    autoSync?: boolean;
+    /** Only invoices issued on or after this date (YYYY-MM-DD) are synced. */
+    since?: string;
+  };
+  /** What has been pushed, so each invoice and payment is sent once and updated only when it changes. */
+  remote: {
+    invoices: Record<string, { id: string; sig: string; voided?: boolean; customer?: string }>;
+    payments: Record<string, string>;
+    customers?: Record<string, string>;
+    item?: string;
+  };
+  lastSyncAt: string | null;
+  lastError: string | null;
+  /** Per-invoice problems from the last sync, by invoice id. */
+  issues?: Record<string, string>;
+  /** A sync is running until this time (ms). */
+  lockUntil?: number;
 }

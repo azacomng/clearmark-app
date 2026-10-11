@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { api } from "@/lib/client";
 import { shortHex } from "@/lib/arc";
 import { Brand } from "./Brand";
-import { IconHistory, IconInvoices, IconLogout, IconPlus, IconReview, IconShield } from "./Icons";
+import { IconBooks, IconHistory, IconInvoices, IconLogout, IconPlus, IconReview, IconShield } from "./Icons";
 
 interface Sync {
   added: number;
@@ -28,6 +28,7 @@ const NAV = [
   ["/app", "Invoices", IconInvoices],
   ["/app/review", "Needs review", IconReview],
   ["/app/history", "History", IconHistory],
+  ["/app/accounting", "Accounting", IconBooks],
   ["/app/limits", "Limits & settings", IconShield],
 ] as const;
 

@@ -14,6 +14,9 @@ export const IconHistory = (p: P) => (
 export const IconShield = (p: P) => (
   <svg {...base} {...p} aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z" /><path d="m9 12 2 2 4-4" /></svg>
 );
+export const IconBooks = (p: P) => (
+  <svg {...base} {...p} aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5v-13ZM10 4h8.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H10" /><path d="M13 8.5h4M13 12h4M13 15.5h2.5" /></svg>
+);
 export const IconPlus = (p: P) => (
   <svg {...base} {...p} aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
 );
