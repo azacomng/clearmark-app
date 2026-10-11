@@ -9,16 +9,16 @@ import { ConnectKitProvider, getDefaultConfig, useModal } from "connectkit";
 import { createConfig, http, useAccount, WagmiProvider } from "wagmi";
 import { mainnet } from "viem/chains";
 import type { EIP1193Provider } from "viem";
-import { arcTestnet } from "@/lib/arc";
+import { arc } from "@/lib/arc";
 import { setActiveProvider } from "@/lib/wallet";
 
 const config = createConfig(
   getDefaultConfig({
-    // Arc testnet first so it is the default. Mainnet is only here so ConnectKit's ENS lookups use a
+    // Arc first so it is the default. Ethereum mainnet is only here so ConnectKit's ENS lookups use a
     // CORS-safe endpoint instead of its own, as the Arc docs recommend.
-    chains: [arcTestnet, mainnet],
+    chains: [arc, mainnet],
     transports: {
-      [arcTestnet.id]: http(arcTestnet.rpcUrls.default.http[0]),
+      [arc.id]: http(arc.rpcUrls.default.http[0]),
       [mainnet.id]: http("https://cloudflare-eth.com"),
     },
     walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
@@ -73,7 +73,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             "--ck-accent-color": "#8B9DFF",
             "--ck-accent-text-color": "#070A1A",
           }}
-          options={{ initialChainId: arcTestnet.id, enforceSupportedChains: false, hideNoWalletCTA: false }}
+          options={{ initialChainId: arc.id, enforceSupportedChains: false, hideNoWalletCTA: false }}
         >
           <Bridge />
           {children}

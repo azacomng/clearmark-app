@@ -127,7 +127,7 @@ export interface Payment {
    * invoice). rate = invoice units per 1 token unit, scaled by 1e6.
    */
   fx?: { rate: Units; quoteId: string | null; source: string } | null;
-  /** Source chain for a payment bridged to Arc before it was paid (e.g. "Base Sepolia"). */
+  /** Source chain for a payment bridged to Arc before it was paid (e.g. "Base"). */
   via?: string | null;
   /** Dismissed by the merchant: it no longer counts toward any invoice. The money itself isn't moved. */
   voided?: VoidRecord | null;

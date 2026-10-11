@@ -8,7 +8,7 @@ import { toTokenUnits } from "@/lib/fx";
 import { api, date, useApi, when } from "@/lib/client";
 import { fmt, toUnits } from "@/lib/money";
 import type { PublicInvoice } from "@/lib/service";
-import { connect, contractAccepts, ensureArcTestnet, friendlyError, hasWallet, payViaContract, sendWithMemo, tokenBalance, waitForTx } from "@/lib/wallet";
+import { connect, contractAccepts, ensureArc, friendlyError, hasWallet, payViaContract, sendWithMemo, tokenBalance, waitForTx } from "@/lib/wallet";
 import { useConnectWallet } from "./WalletProvider";
 
 interface QuoteView {
@@ -146,13 +146,13 @@ export function Checkout({ id }: { id: string }) {
           const fee = await estimateBridge(from, account, need).catch(() => 0n);
           await bridgeToArc(from, account, need + fee, setStage);
           setStage("Waiting for the USDC to land on Arc…");
-          await ensureArcTestnet();
+          await ensureArc();
           for (let i = 0; i < 30 && (await tokenBalance(account, "USDC").catch(() => 0n)) < send; i++) await new Promise((r) => setTimeout(r, 2000));
           setStage(null);
         }
       }
       const bal = await tokenBalance(account, token).catch(() => null);
-      if (bal !== null && bal < send) throw new Error(`This wallet has ${fmt(bal)} ${token} on Arc. Get testnet ${token} at faucet.circle.com.`);
+      if (bal !== null && bal < send) throw new Error(`This wallet has ${fmt(bal)} ${token} on Arc. Add ${token} on Arc, or pay from another chain.`);
       setStep("signing");
       const fields: Record<string, string> = { inv: inv.number, pay: mode };
       if (fx && q) fields.q = q.id;
@@ -218,7 +218,7 @@ export function Checkout({ id }: { id: string }) {
           <b>{inv.merchant.name}</b>
           <span className="mono">{shortHex(inv.merchant.address)}</span>
         </div>
-        <span className="chip testnet" style={{ marginLeft: "auto" }}>Testnet</span>
+        <span className="chip net" style={{ marginLeft: "auto" }}>Arc</span>
       </div>
       <div className="co-body">
         {step === "done" ? (
@@ -267,7 +267,7 @@ export function Checkout({ id }: { id: string }) {
               {BigInt(inv.state.received) > 0n ? <div>Already paid <b>−{fmt(inv.state.received)}</b></div> : null}
               <div>Billed to <b>{inv.customerName}</b></div>
               <div>Settles to <b className="mono">{shortHex(inv.merchant.address)}</b></div>
-              <div>Network <b>Arc testnet · gas paid in USDC</b></div>
+              <div>Network <b>Arc · gas paid in USDC</b></div>
             </div>
             <div className="stack" style={{ gap: 8 }}>
               {inv.currency === "EUR" && from === "arc" ? (
@@ -371,7 +371,7 @@ export function Checkout({ id }: { id: string }) {
             {inv.currency === "EUR" && toSend !== null ? (
               <button onClick={() => simulate("quote", { token: "USDC" })}>Pay in USDC<span>quoted</span></button>
             ) : null}
-            <button onClick={() => (inv.currency === "EUR" ? simulate("quote", { token: "USDC", via: "Base_Sepolia" }) : simulate(fmt(balance || BigInt(inv.amount), { min: 2 }).replace(/,/g, ""), { via: "Base_Sepolia" }))}>From Base<span>bridged</span></button>
+            <button onClick={() => (inv.currency === "EUR" ? simulate("quote", { token: "USDC", via: "Base" }) : simulate(fmt(balance || BigInt(inv.amount), { min: 2 }).replace(/,/g, ""), { via: "Base" }))}>From Base<span>bridged</span></button>
           </div>
         </div>
       ) : null}

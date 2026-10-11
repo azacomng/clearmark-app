@@ -8,7 +8,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { getAddress, verifyMessage } from "viem";
 import { createSiweMessage, parseSiweMessage, validateSiweMessage } from "viem/siwe";
-import { ARC_TESTNET_CHAIN_ID } from "./arc";
+import { ARC_CHAIN_ID } from "./arc";
 import { read, write } from "./store";
 import type { Hex } from "./types";
 
@@ -35,7 +35,7 @@ export function signInMessage(address: string, nonce: string, origin: string, is
     statement: "Sign in to Clearmark. This is free and does not send a transaction.",
     uri: url.origin,
     version: "1",
-    chainId: ARC_TESTNET_CHAIN_ID,
+    chainId: ARC_CHAIN_ID,
     nonce,
     issuedAt,
     expirationTime: new Date(issuedAt.getTime() + NONCE_TTL_MS),

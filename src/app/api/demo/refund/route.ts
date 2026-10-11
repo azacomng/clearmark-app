@@ -12,7 +12,7 @@ export const POST = handle(async (req: Request) => {
   const r = await write((db) => {
     const r = db.refunds[refundId];
     if (!r || r.merchant !== m) throw new LedgerError("Refund not found", 404);
-    if (r.source !== "demo") throw new LedgerError("This refund is for a real testnet payment. Send it from your wallet.");
+    if (r.source !== "demo") throw new LedgerError("This refund is for a real payment. Send it from your wallet.");
     return markRefundSent(db, m, refundId, {
       txHash: demoTxHash(refundId),
       blockNumber: BigInt(Date.now()),

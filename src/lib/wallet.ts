@@ -13,11 +13,11 @@ import {
   type EIP1193Provider,
 } from "viem";
 import {
-  arcTestnet,
-  ARC_TESTNET_CHAIN_ID,
+  arc,
+  ARC_CHAIN_ID,
   BATCHER_ADDRESS,
   batchTransferCalldata,
-  CLEARMARK_PAY_ADDRESS,
+  CLEARMARK_PAY,
   clearmarkPayAbi,
   erc20Abi,
   memoAbi,
@@ -35,7 +35,7 @@ declare global {
   }
 }
 
-export const browserClient = createPublicClient({ chain: arcTestnet, transport: http() });
+export const browserClient = createPublicClient({ chain: arc, transport: http() });
 
 let active: EIP1193Provider | null = null;
 
@@ -62,12 +62,12 @@ export async function connect(): Promise<Hex> {
   return a.toLowerCase() as Hex;
 }
 
-/** Switch the wallet to Arc testnet, adding the network if the wallet doesn't know it yet. */
-export async function ensureArcTestnet() {
+/** Switch the wallet to Arc, adding the network if the wallet doesn't know it yet. */
+export async function ensureArc() {
   const p = provider();
   const current = Number(await p.request({ method: "eth_chainId" }));
-  if (current === ARC_TESTNET_CHAIN_ID) return;
-  const chainId = numberToHex(ARC_TESTNET_CHAIN_ID);
+  if (current === ARC_CHAIN_ID) return;
+  const chainId = numberToHex(ARC_CHAIN_ID);
   try {
     await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
   } catch (e) {
@@ -77,10 +77,10 @@ export async function ensureArcTestnet() {
       params: [
         {
           chainId,
-          chainName: "Arc Testnet",
+          chainName: "Arc",
           nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-          rpcUrls: arcTestnet.rpcUrls.default.http as unknown as string[],
-          blockExplorerUrls: [arcTestnet.blockExplorers!.default.url],
+          rpcUrls: arc.rpcUrls.default.http as unknown as string[],
+          blockExplorerUrls: [arc.blockExplorers!.default.url],
         },
       ],
     });
@@ -88,7 +88,7 @@ export async function ensureArcTestnet() {
 }
 
 function wallet(account: Hex) {
-  return createWalletClient({ account, chain: arcTestnet, transport: custom(provider()) });
+  return createWalletClient({ account, chain: arc, transport: custom(provider()) });
 }
 
 export async function signText(account: Hex, message: string): Promise<Hex> {
@@ -105,7 +105,7 @@ export async function tokenBalance(address: Hex, token: Token): Promise<bigint> 
 
 /** Send USDC or EURC to `to` through Arc's Memo contract so the transfer carries the invoice fingerprint. */
 export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId: Hex, memoData: Hex, token: Token = "USDC"): Promise<Hex> {
-  await ensureArcTestnet();
+  await ensureArc();
   return wallet(account).writeContract({
     account,
     address: MEMO_ADDRESS,
@@ -121,10 +121,11 @@ export async function sendWithMemo(account: Hex, to: Hex, amount: bigint, memoId
  * neither answers, so the caller can tell "the contract said no" apart from "couldn't ask".
  */
 export async function contractAccepts(account: Hex, token: Token): Promise<boolean | null> {
-  if (!CLEARMARK_PAY_ADDRESS) return false;
-  const args = { address: CLEARMARK_PAY_ADDRESS, abi: clearmarkPayAbi, functionName: "isAllowedToken", args: [TOKEN_ADDRESS[token]] } as const;
+  const pay = CLEARMARK_PAY[token];
+  if (!pay) return false;
+  const args = { address: pay, abi: clearmarkPayAbi, functionName: "isAllowedToken", args: [TOKEN_ADDRESS[token]] } as const;
   try {
-    await ensureArcTestnet();
+    await ensureArc();
     return await wallet(account).extend(publicActions).readContract(args);
   } catch (e) {
     console.warn("[clearmark] contract check through the wallet failed", e);
@@ -149,11 +150,12 @@ export async function payViaContract(
   token: Token,
   onStage: (s: string) => void = () => {},
 ): Promise<Hex> {
-  if (!CLEARMARK_PAY_ADDRESS) throw new Error("The Clearmark payment contract isn't set up.");
-  await ensureArcTestnet();
+  const pay = CLEARMARK_PAY[token];
+  if (!pay) throw new Error(`The Clearmark payment contract for ${token} isn't set up.`);
+  await ensureArc();
   const tokenAddress = TOKEN_ADDRESS[token];
   const allowance = await chainReader()
-    .readContract({ address: tokenAddress, abi: erc20Abi, functionName: "allowance", args: [account, CLEARMARK_PAY_ADDRESS] })
+    .readContract({ address: tokenAddress, abi: erc20Abi, functionName: "allowance", args: [account, pay] })
     .catch(() => 0n);
   if (allowance < amount) {
     onStage(`Step 1 of 2: allow Clearmark to send ${token} in your wallet…`);
@@ -162,7 +164,7 @@ export async function payViaContract(
       address: tokenAddress,
       abi: erc20Abi,
       functionName: "approve",
-      args: [CLEARMARK_PAY_ADDRESS, amount],
+      args: [pay, amount],
     });
     onStage("Waiting for the approval to settle…");
     const r = await waitForTx(approval);
@@ -171,7 +173,7 @@ export async function payViaContract(
   }
   return wallet(account).writeContract({
     account,
-    address: CLEARMARK_PAY_ADDRESS,
+    address: pay,
     abi: clearmarkPayAbi,
     functionName: "payInvoice",
     args: [tokenAddress, to, amount, invoiceId],
@@ -183,19 +185,19 @@ export async function payViaContract(
  * sent from the caller's own wallet (sender-preserving), so the batch stays non-custodial.
  */
 export async function sendBatch(account: Hex, token: Token, transfers: { to: Hex; amount: bigint }[]): Promise<Hex> {
-  await ensureArcTestnet();
+  await ensureArc();
   return wallet(account).sendTransaction({ account, to: BATCHER_ADDRESS, data: batchTransferCalldata(token, transfers) });
 }
 
 /**
  * Reads Arc through the connected wallet's own RPC first, then the public RPC. Some browsers can't
  * reach the public RPC (privacy extensions, network filters) while the wallet still can. Use it only
- * once the wallet is on Arc, e.g. after ensureArcTestnet or right after the wallet sent a transaction.
+ * once the wallet is on Arc, e.g. after ensureArc or right after the wallet sent a transaction.
  */
 function chainReader() {
   const p = active ?? (typeof window !== "undefined" ? window.ethereum : undefined);
   if (!p) return browserClient;
-  return createPublicClient({ chain: arcTestnet, transport: fallback([custom(p), http()]) });
+  return createPublicClient({ chain: arc, transport: fallback([custom(p), http()]) });
 }
 
 export async function waitForTx(hash: Hex) {
@@ -205,6 +207,6 @@ export async function waitForTx(hash: Hex) {
 export function friendlyError(e: unknown): string {
   const err = e as { shortMessage?: string; message?: string; code?: number };
   if (err?.code === 4001 || /rejected|denied/i.test(err?.message ?? "")) return "You cancelled the request in your wallet.";
-  if (/insufficient/i.test(err?.message ?? "")) return "Not enough USDC in this wallet. Get testnet USDC from faucet.circle.com.";
+  if (/insufficient/i.test(err?.message ?? "")) return "Not enough funds in this wallet. Paying needs the invoice amount plus a little USDC for gas on Arc.";
   return err?.shortMessage ?? err?.message?.split("\n")[0] ?? "Something went wrong.";
 }

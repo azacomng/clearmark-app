@@ -69,7 +69,7 @@ export default async function Receipt({ params }: Props) {
               </p>
             </div>
             <div className="seal" aria-label={`Clearmark seal: ${r.seal}`}>
-              CLEARMARK<b>{r.seal}</b>ARC TESTNET
+              CLEARMARK<b>{r.seal}</b>ARC MAINNET
             </div>
           </div>
           {r.kind === "payment" ? (
@@ -119,7 +119,7 @@ export default async function Receipt({ params }: Props) {
           </div>
         </div>
         <p className="faint" style={{ fontSize: 12 }}>
-          Issued by Clearmark. Anyone with this link can check it against Arc testnet.
+          Issued by Clearmark. Anyone with this link can check it against Arc mainnet.
         </p>
         <Link href="/" className="madewith">
           Invoice with <b>Clearmark</b> · get paid in USDC or EURC, proven on Arc

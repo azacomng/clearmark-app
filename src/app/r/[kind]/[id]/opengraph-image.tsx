@@ -55,7 +55,7 @@ export default async function Image({ params }: { params: Promise<{ kind: string
             <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: -1 }}>Clearmark</div>
           </div>
           <div style={{ display: "flex", fontSize: 22, color: "#98A2C3", letterSpacing: 3 }}>
-            {r?.source === "demo" ? "ARC TESTNET · SIMULATED" : "ARC TESTNET"}
+            {r?.source === "demo" ? "ARC · SIMULATED" : "ARC MAINNET"}
           </div>
         </div>
 

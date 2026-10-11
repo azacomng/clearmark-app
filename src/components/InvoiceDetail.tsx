@@ -358,7 +358,7 @@ export function InvoiceDetail({ id, compact = false }: { id: string; compact?: b
                 Pay in USDC
               </button>
             ) : null}
-            <button className="btn sm" disabled={!!busy} onClick={() => (inv.currency === "EUR" ? simulate("quote", { token: "USDC", via: "Base_Sepolia" }) : simulate(fmt(BigInt(st.balance) > 0n ? st.balance : inv.amount).replace(/,/g, ""), { via: "Base_Sepolia" }))}>From Base</button>
+            <button className="btn sm" disabled={!!busy} onClick={() => (inv.currency === "EUR" ? simulate("quote", { token: "USDC", via: "Base" }) : simulate(fmt(BigInt(st.balance) > 0n ? st.balance : inv.amount).replace(/,/g, ""), { via: "Base" }))}>From Base</button>
           </div>
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, type Log } from "viem";
-import { CLEARMARK_PAY_ADDRESS, clearmarkPayAbi, erc20Abi, extractTransfers, invoiceMemoId, USDC_ADDRESS } from "@/lib/arc";
+import { CLEARMARK_PAY, clearmarkPayAbi, erc20Abi, EURC_ADDRESS, extractTransfers, invoiceMemoId, USDC_ADDRESS } from "@/lib/arc";
 import { toUnits } from "@/lib/money";
 import type { Hex } from "@/lib/types";
 
@@ -8,9 +8,9 @@ const PAYER = "0x00000000000000000000000000000000000000aa" as Hex;
 const M = "0x00000000000000000000000000000000000000bb" as Hex;
 const OTHER = "0x00000000000000000000000000000000000000cc" as Hex;
 
-function transferLog(from: Hex, to: Hex, amount: bigint, logIndex: number): Log {
+function transferLog(from: Hex, to: Hex, amount: bigint, logIndex: number, token: Hex = USDC_ADDRESS): Log {
   return {
-    address: USDC_ADDRESS,
+    address: token,
     topics: encodeEventTopics({ abi: erc20Abi, eventName: "Transfer", args: { from, to } }),
     data: encodeAbiParameters([{ type: "uint256" }], [amount]),
     logIndex,
@@ -18,19 +18,46 @@ function transferLog(from: Hex, to: Hex, amount: bigint, logIndex: number): Log 
   } as unknown as Log;
 }
 
-function paidLog(invoiceId: Hex, payer: Hex, merchant: Hex, amount: bigint, logIndex: number, address: Hex = CLEARMARK_PAY_ADDRESS!): Log {
+function paidLog(
+  invoiceId: Hex,
+  payer: Hex,
+  merchant: Hex,
+  amount: bigint,
+  logIndex: number,
+  address: Hex = CLEARMARK_PAY.USDC!,
+  token: Hex = USDC_ADDRESS,
+): Log {
   return {
     address,
     topics: encodeEventTopics({ abi: clearmarkPayAbi, eventName: "InvoicePaid", args: { invoiceId, payer, merchant } }),
-    data: encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [USDC_ADDRESS, amount]),
+    data: encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [token, amount]),
     logIndex,
     blockNumber: 7n,
   } as unknown as Log;
 }
 
 describe("ClearmarkPay contract payments", () => {
-  it("uses the deployed testnet contract by default", () => {
-    expect(CLEARMARK_PAY_ADDRESS?.toLowerCase()).toBe("0x5de9f147cfc0406d1f23b3a2eedfc8cf133dfde8");
+  it("uses the deployed mainnet contracts by default, one per token", () => {
+    expect(CLEARMARK_PAY.USDC?.toLowerCase()).toBe("0xeb7355de3d37d1130d0b3e8ca2ca63fe4ffdaf0b");
+    expect(CLEARMARK_PAY.EURC?.toLowerCase()).toBe("0x5de9f147cfc0406d1f23b3a2eedfc8cf133dfde8");
+  });
+
+  it("tags a EURC transfer with the invoice from the EURC contract", () => {
+    const invoiceId = invoiceMemoId("eur1");
+    const amount = toUnits("80");
+    const out = extractTransfers(
+      [transferLog(PAYER, M, amount, 0, EURC_ADDRESS), paidLog(invoiceId, PAYER, M, amount, 1, CLEARMARK_PAY.EURC!, EURC_ADDRESS)],
+      "0xab",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ amount, memoId: invoiceId, token: "EURC" });
+  });
+
+  it("ignores an InvoicePaid event from the other token's contract", () => {
+    const amount = toUnits("80");
+    const wrong = paidLog(invoiceMemoId("eur2"), PAYER, M, amount, 1, CLEARMARK_PAY.USDC!, EURC_ADDRESS);
+    const out = extractTransfers([transferLog(PAYER, M, amount, 0, EURC_ADDRESS), wrong], "0xab");
+    expect(out[0].memoId).toBeNull();
   });
 
   it("tags the transfer with the invoice from InvoicePaid", () => {

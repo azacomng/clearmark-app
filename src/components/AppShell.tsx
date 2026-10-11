@@ -110,7 +110,7 @@ export function AppShell({ address, name, demo, children }: { address: string; n
               <i className={`dot ${sync?.error ? "err" : "live"}`} />
               {syncLabel}
             </span>
-            <span className="chip testnet" style={{ justifySelf: "start" }}>Arc testnet{demo ? " · demo on" : ""}</span>
+            <span className="chip net" style={{ justifySelf: "start" }}>Arc mainnet{demo ? " · demo on" : ""}</span>
             <button className="btn ghost sm" onClick={logout} style={{ justifySelf: "start", paddingInline: 0, border: 0, color: "var(--muted)" }}>
               <IconLogout />
               Sign out

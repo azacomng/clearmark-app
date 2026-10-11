@@ -40,7 +40,7 @@ export default async function Home() {
       <header className="land-top">
         <Brand />
         <div className="row">
-          <span className="chip testnet">Arc testnet</span>
+          <span className="chip net">Arc mainnet</span>
           <span className="chip">USDC gas</span>
           <span className="chip">finality <b>&lt;1s</b></span>
         </div>
@@ -65,12 +65,9 @@ export default async function Home() {
           <div className="cta">
             <div className="row" style={{ marginTop: 30, alignItems: "flex-start" }}>
               <SignIn label="Connect wallet & sign in" />
-              <a className="btn" href="https://faucet.circle.com" target="_blank" rel="noreferrer">
-                Get testnet USDC ↗
-              </a>
             </div>
             <p className="faint" style={{ fontSize: 12.5, marginTop: 14 }}>
-              Testnet only. Signing in is a free signature, not a transaction.
+              Live on Arc mainnet. Signing in is a free signature, not a transaction.
             </p>
           </div>
         </div>
@@ -253,7 +250,7 @@ export default async function Home() {
       </section>
 
       <footer className="foot">
-        <span>© Clearmark · Arc testnet</span>
+        <span>© Clearmark · Arc</span>
         <span>
           Built on Arc. <Link href="https://docs.arc.io">Arc docs</Link>
         </span>

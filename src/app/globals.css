@@ -83,8 +83,8 @@ button:disabled{cursor:default;opacity:.55}
 @keyframes ang{to{--ang:360deg}}
 .chip{font:500 11.5px/1 var(--f-mono);padding:7px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:rgba(255,255,255,.03);backdrop-filter:blur(10px);white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
 .chip b{color:var(--fg);font-weight:500}
-.chip.testnet{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent);background:var(--warn-soft)}
-.chip.testnet::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor;animation:blink 2.4s ease-in-out infinite}
+.chip.net{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:var(--ok-soft)}
+.chip.net::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor;animation:blink 2.4s ease-in-out infinite}
 @keyframes blink{50%{opacity:.35}}
 
 /* ---------- buttons ---------- */
@@ -382,7 +382,7 @@ tbody tr:last-child td{border-bottom:0}
   .rules>div>:last-child{grid-column:1/-1}
   .rule{grid-template-columns:1fr}
   .ringcard{grid-template-columns:1fr;justify-items:center}
-  .land-top .row .chip:not(.testnet){display:none}
+  .land-top .row .chip:not(.net){display:none}
   .cta-band{padding:30px 18px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}.proof .steps div{opacity:1}}

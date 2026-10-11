@@ -302,7 +302,7 @@ export type PublicInvoice = ReturnType<typeof publicInvoice>;
 
 export async function confirmTx(txHash: Hex) {
   const v = await verifyTx(txHash);
-  if (!v) throw new LedgerError("That transaction isn't on Arc testnet yet. Try again in a moment.", 404);
+  if (!v) throw new LedgerError("That transaction isn't on Arc yet. Try again in a moment.", 404);
   if (v.status !== "success") throw new LedgerError("That transaction reverted, so no USDC moved.");
   const now = new Date();
   return write((db) =>
@@ -356,7 +356,7 @@ export async function syncMerchant(merchant: Hex) {
 
 export async function confirmRefundTx(merchant: Hex, refundId: string, txHash: Hex) {
   const v = await verifyTx(txHash);
-  if (!v) throw new LedgerError("That transaction isn't on Arc testnet yet. Try again in a moment.", 404);
+  if (!v) throw new LedgerError("That transaction isn't on Arc yet. Try again in a moment.", 404);
   if (v.status !== "success") throw new LedgerError("That transaction reverted, so no USDC moved.");
   return write((db) => {
     const r = db.refunds[refundId];
@@ -370,7 +370,7 @@ export async function confirmRefundTx(merchant: Hex, refundId: string, txHash: H
 
 export async function confirmPayoutTx(merchant: Hex, payoutId: string, txHash: Hex): Promise<Payout> {
   const v = await verifyTx(txHash);
-  if (!v) throw new LedgerError("That transaction isn't on Arc testnet yet. Try again in a moment.", 404);
+  if (!v) throw new LedgerError("That transaction isn't on Arc yet. Try again in a moment.", 404);
   if (v.status !== "success") throw new LedgerError("That transaction reverted, so nothing was paid.");
   return write((db) => markPayoutSent(db, merchant, payoutId, { txHash, blockNumber: v.blockNumber, timestamp: v.timestamp, transfers: v.transfers }));
 }

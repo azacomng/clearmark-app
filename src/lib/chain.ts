@@ -1,28 +1,28 @@
-// Server-side reads from Arc testnet: verify a single transaction, or scan for new
+// Server-side reads from Arc mainnet: verify a single transaction, or scan for new
 // inbound USDC transfers to a merchant since the last sync.
 
 import "server-only";
 import { createPublicClient, http, parseAbiItem, type Log } from "viem";
-import { arcTestnet, ARC_TESTNET_CHAIN_ID, EURC_ADDRESS, extractTransfers, USDC_ADDRESS, type ExtractedTransfer } from "./arc";
+import { arc, ARC_CHAIN_ID, EURC_ADDRESS, extractTransfers, USDC_ADDRESS, type ExtractedTransfer } from "./arc";
 import type { Hex } from "./types";
 
-const RPC = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.io";
+const RPC = process.env.ARC_RPC_URL || "https://rpc.mainnet.arc.io";
 
-export const client = createPublicClient({ chain: arcTestnet, transport: http(RPC, { timeout: 15_000 }) });
+export const client = createPublicClient({ chain: arc, transport: http(RPC, { timeout: 15_000 }) });
 
 let chainChecked = false;
-/** Refuse to run against anything but Arc testnet. */
-export async function assertTestnet() {
+/** Refuse to run against anything but Arc mainnet. */
+export async function assertArc() {
   if (chainChecked) return;
   const id = await client.getChainId();
-  if (id !== ARC_TESTNET_CHAIN_ID) {
-    throw new Error(`ARC_RPC_URL points at chain ${id}. Clearmark v1 only runs on Arc testnet (${ARC_TESTNET_CHAIN_ID}).`);
+  if (id !== ARC_CHAIN_ID) {
+    throw new Error(`ARC_RPC_URL points at chain ${id}. Clearmark only runs on Arc mainnet (${ARC_CHAIN_ID}).`);
   }
   chainChecked = true;
 }
 
 export async function latestBlock(): Promise<bigint> {
-  await assertTestnet();
+  await assertArc();
   return client.getBlockNumber();
 }
 
@@ -46,7 +46,7 @@ export interface VerifiedTx {
 
 /** Read a transaction's receipt and pull out its USDC transfers and memos. */
 export async function verifyTx(hash: Hex): Promise<VerifiedTx | null> {
-  await assertTestnet();
+  await assertArc();
   const receipt = await client.getTransactionReceipt({ hash }).catch(() => null);
   if (!receipt) return null;
   return {
@@ -66,7 +66,7 @@ const MAX_BLOCKS_PER_SYNC = 50_000n;
  * by reading its transaction receipt. Bounded per call so a long gap catches up over several syncs.
  */
 export async function scanInbound(merchant: Hex, after: bigint) {
-  await assertTestnet();
+  await assertArc();
   const head = await client.getBlockNumber();
   const to = head - after > MAX_BLOCKS_PER_SYNC ? after + MAX_BLOCKS_PER_SYNC : head;
   const out: (ExtractedTransfer & { timestamp: string })[] = [];

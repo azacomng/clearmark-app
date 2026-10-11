@@ -30,7 +30,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     // Record a Swap Kit USDC -> EURC conversion, checked onchain: USDC must have left the merchant's wallet.
     const hash = asTxHash(b.txHash);
     const v = await verifyTx(hash);
-    if (!v || v.status !== "success") throw new LedgerError("That swap isn't confirmed on Arc testnet yet.");
+    if (!v || v.status !== "success") throw new LedgerError("That swap isn't confirmed on Arc yet.");
     const out = v.transfers.filter((t) => t.from === m && t.token === "USDC").reduce((a, t) => a + t.amount, 0n);
     if (out <= 0n) throw new LedgerError("That transaction didn't send USDC from your wallet.");
     return json(await write((db) => invoiceView(db, recordConversion(db, m, id, hash, out, now), now)));

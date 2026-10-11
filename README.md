@@ -6,7 +6,8 @@ from any wallet, and every transfer lands on the right invoice with a status a h
 
 Not a wallet, not a processor, and it never holds funds: payments go straight to the merchant's wallet.
 
-> **v1 runs on Arc testnet only.** The server refuses to start syncing against any other chain id.
+> **Clearmark runs on Arc mainnet (chain id 5042).** Payments are real USDC and EURC. The server refuses to
+> start syncing against any other chain id.
 
 ## What v1 does
 
@@ -41,7 +42,7 @@ Growth features:
   countdown. Reconciliation judges the invoice at the price that applied at the settle timestamp of the
   payment that covered it (`src/lib/terms.ts`), so 245.00 paid on day 2 of a 250.00 invoice is
   `PAID · EARLY DISCOUNT`, and 250.00 after the due date with a 1.5% fee is short by 3.75.
-- **Pay from any chain**: the checkout's "Pay from" menu takes USDC from eight testnets (Base, Ethereum,
+- **Pay from any chain**: the checkout's "Pay from" menu takes USDC from eight chains (Base, Ethereum,
   Arbitrum, OP, Avalanche, Polygon, Unichain, Linea) through Circle's Bridge Kit (CCTP v2, Arc domain 26)
   to the payer's own wallet on Arc, with Circle's Forwarder doing the mint, then pays the invoice there
   with its memo (`via=<chain>` is recorded on the receipt). A memo can't cross chains, so bridging to the
@@ -83,7 +84,7 @@ src/lib/engine.ts     reconciliation rules (pure, unit-tested)
 src/lib/limits.ts     transaction limits (pure)
 src/lib/matching.ts   suggestions for untagged transfers (pure)
 src/lib/ledger.ts     ledger operations on the data model (pure)
-src/lib/arc.ts        Arc testnet config, Memo ABI, transfer + memo extraction
+src/lib/arc.ts        Arc mainnet config, Memo ABI, transfer + memo extraction
 src/lib/chain.ts      server reads from Arc (verify tx, scan inbound)
 src/lib/service.ts    use cases and views for the API
 src/lib/store.ts      v1 JSON file store (swap for Postgres later; only this file changes)
@@ -108,18 +109,12 @@ and checkout shows **Simulate payment** buttons that push fake transfers through
 pipeline. Simulated payments are labelled everywhere and never touch the chain; turn demo mode off for
 any shared deployment.
 
-### Real testnet payments
+### Real payments
 
-1. Get testnet USDC from [faucet.circle.com](https://faucet.circle.com) (Arc testnet) for a customer wallet.
-2. Open the invoice's payment link and pay with the wallet, or from the command line with a
-   **throwaway** key:
-
-```bash
-TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/pay/<id>            # exact
-TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/pay/<id> 200         # underpay
-TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/pay/<id> 125 part    # split
-TEST_PAYER_PRIVATE_KEY=0x… npm run send-test-payment -- http://localhost:3000/pay/<id> 250 full --untagged
-```
+Open the invoice's payment link with a different wallet from the merchant's and pay. The payer needs the
+invoice amount in USDC or EURC on Arc plus a little USDC for gas, or USDC on one of the eight supported
+chains to bridge in. Full USDC and EURC payments on Arc go through the ClearmarkPay contracts
+(USDC `0xEb73…af0b`, EURC `0x5de9…dDe8`); part, rate-quoted and bridged payments use Arc's Memo contract.
 
 ## Deploy to Vercel
 

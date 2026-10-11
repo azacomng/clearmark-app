@@ -7,16 +7,16 @@
 import type { Hex } from "./types";
 import { walletProvider } from "./wallet";
 
-/** Testnets the payer can bring USDC from. Names are Bridge Kit chain identifiers. */
+/** Chains the payer can bring USDC from. Names are Bridge Kit chain identifiers. */
 export const SOURCE_CHAINS = [
-  { id: "Base_Sepolia", label: "Base Sepolia" },
-  { id: "Ethereum_Sepolia", label: "Ethereum Sepolia" },
-  { id: "Arbitrum_Sepolia", label: "Arbitrum Sepolia" },
-  { id: "Optimism_Sepolia", label: "OP Sepolia" },
-  { id: "Avalanche_Fuji", label: "Avalanche Fuji" },
-  { id: "Polygon_Amoy_Testnet", label: "Polygon Amoy" },
-  { id: "Unichain_Sepolia", label: "Unichain Sepolia" },
-  { id: "Linea_Sepolia", label: "Linea Sepolia" },
+  { id: "Base", label: "Base" },
+  { id: "Ethereum", label: "Ethereum" },
+  { id: "Arbitrum", label: "Arbitrum" },
+  { id: "Optimism", label: "OP Mainnet" },
+  { id: "Avalanche", label: "Avalanche" },
+  { id: "Polygon", label: "Polygon" },
+  { id: "Unichain", label: "Unichain" },
+  { id: "Linea", label: "Linea" },
 ] as const;
 export type SourceChain = (typeof SOURCE_CHAINS)[number]["id"];
 
@@ -34,7 +34,7 @@ export async function estimateBridge(chain: SourceChain, recipient: Hex, amount:
   const kit = new BridgeKit();
   const est = await kit.estimate({
     from: { adapter: await adapter(), chain },
-    to: { chain: "Arc_Testnet", recipientAddress: recipient, useForwarder: true },
+    to: { chain: "Arc", recipientAddress: recipient, useForwarder: true },
     amount: usd(amount),
   });
   return est.fees.reduce((t, f) => t + (f.amount ? BigInt(Math.ceil(Number(f.amount) * 1e6)) : 0n), 0n);
@@ -58,7 +58,7 @@ export async function bridgeToArc(chain: SourceChain, recipient: Hex, amount: bi
   });
   const res = await kit.bridge({
     from: { adapter: await adapter(), chain },
-    to: { chain: "Arc_Testnet", recipientAddress: recipient, useForwarder: true },
+    to: { chain: "Arc", recipientAddress: recipient, useForwarder: true },
     amount: usd(amount),
   });
   if (res.state === "error") throw new Error("The bridge transfer failed. Your USDC is still on the source chain, or check your wallet history.");
@@ -79,7 +79,7 @@ export async function swapUsdcToEurc(amount: bigint, onStep: (s: string) => void
   const { SwapKit } = await import("@circle-fin/swap-kit");
   const kit = new SwapKit();
   const params = {
-    from: { adapter: await adapter(), chain: "Arc_Testnet" as const },
+    from: { adapter: await adapter(), chain: "Arc" as const },
     tokenIn: "USDC" as const,
     tokenOut: "EURC" as const,
     amountIn: usd(amount),

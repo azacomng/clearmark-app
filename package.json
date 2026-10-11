@@ -2,14 +2,13 @@
   "name": "clearmark",
   "version": "0.1.0",
   "private": true,
-  "description": "USDC invoice verification and automatic reconciliation on Arc (testnet).",
+  "description": "USDC invoice verification and automatic reconciliation on Arc.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "send-test-payment": "node --experimental-strip-types scripts/send-test-payment.mts"
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=20"

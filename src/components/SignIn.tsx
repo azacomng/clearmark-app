@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
-import { connect, ensureArcTestnet, friendlyError, signText } from "@/lib/wallet";
+import { connect, ensureArc, friendlyError, signText } from "@/lib/wallet";
 import { useConnectWallet } from "./WalletProvider";
 
 export function SignIn({ label = "Sign in with wallet", primary = true }: { label?: string; primary?: boolean }) {
@@ -18,7 +18,7 @@ export function SignIn({ label = "Sign in with wallet", primary = true }: { labe
     try {
       await connectWallet();
       const address = await connect();
-      await ensureArcTestnet().catch(() => {}); // signing works on any network; payments switch later
+      await ensureArc().catch(() => {}); // signing works on any network; payments switch later
       const { nonce, message } = await api<{ nonce: string; message: string }>("/api/auth/nonce", { method: "POST", json: { address } });
       const signature = await signText(address, message);
       await api("/api/auth/verify", { method: "POST", json: { address, nonce, signature } });

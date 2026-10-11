@@ -1,4 +1,4 @@
-// Arc TESTNET configuration and the onchain primitives Clearmark uses.
+// Arc mainnet configuration and the onchain primitives Clearmark uses.
 // Safe to import from both server and browser code.
 
 import {
@@ -15,38 +15,30 @@ import {
 } from "viem";
 import type { Hex } from "./types";
 
-export const ARC_TESTNET_CHAIN_ID = 5042002;
+/** Arc mainnet. Source: docs.arc.io/arc/references/connect-to-arc */
+export const ARC_CHAIN_ID = 5042;
 
 // NEXT_PUBLIC_* values are inlined into the browser bundle at build time.
-const rpc = process.env.NEXT_PUBLIC_ARC_RPC_URL || "https://rpc.testnet.arc.io";
+const rpc = process.env.NEXT_PUBLIC_ARC_RPC_URL || "https://rpc.mainnet.arc.io";
 
-export const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER_URL || "https://explorer.testnet.arc.io";
+export const EXPLORER_URL = process.env.NEXT_PUBLIC_ARC_EXPLORER_URL || "https://explorer.arc.io";
 
-export const arcTestnet = defineChain({
-  id: ARC_TESTNET_CHAIN_ID,
-  name: "Arc Testnet",
+export const arc = defineChain({
+  id: ARC_CHAIN_ID,
+  name: "Arc",
   // Native USDC is the gas token and uses 18 decimals. Payments use the 6-decimal ERC-20 interface.
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
   rpcUrls: { default: { http: [rpc] } },
   blockExplorers: { default: { name: "Arc Explorer", url: EXPLORER_URL } },
-  testnet: true,
 });
 
-/** USDC ERC-20 interface on Arc testnet (6 decimals). */
+// Token and predeploy addresses on Arc mainnet. Source: docs.arc.io/arc/references/contract-addresses
+/** USDC's ERC-20 interface (6 decimals) over Arc's native USDC balance. */
 export const USDC_ADDRESS: Hex = "0x3600000000000000000000000000000000000000";
-/** EURC on Arc testnet (6 decimals). Source: docs.arc.io/arc/references/contract-addresses */
-export const EURC_ADDRESS: Hex = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
+/** EURC (6 decimals). */
+export const EURC_ADDRESS: Hex = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
 /** Arc's predeployed Memo contract. Preserves msg.sender for the wrapped call. */
 export const MEMO_ADDRESS: Hex = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
-/**
- * Clearmark's own payment contract (ClearmarkPay, verified on the Arc testnet explorer).
- * payInvoice(token, merchant, amount, invoiceId) moves the token straight from payer to merchant
- * and emits InvoicePaid, so it never holds funds. Set NEXT_PUBLIC_CLEARMARK_PAY_ADDRESS to use a
- * different deployment, or to "off" to send every payment through the Memo contract instead.
- */
-const payEnv = process.env.NEXT_PUBLIC_CLEARMARK_PAY_ADDRESS?.trim();
-export const CLEARMARK_PAY_ADDRESS: Hex | null =
-  payEnv === "off" ? null : ((payEnv || "0x5de9f147cFC0406d1F23B3a2EEDfC8cF133dfDe8") as Hex);
 /** Arc's sender-preserving batcher (Multicall3From). Every subcall sees the sending EOA as msg.sender. */
 export const BATCHER_ADDRESS: Hex = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
 
@@ -58,6 +50,23 @@ export function tokenAt(address: string): Token | null {
   if (a === EURC_ADDRESS.toLowerCase()) return "EURC";
   return null;
 }
+
+/**
+ * Clearmark's own payment contracts (ClearmarkPay, verified on explorer.arc.io), one per token: each
+ * deployment's accepted-token list is fixed at deploy time. payInvoice(token, merchant, amount, invoiceId)
+ * moves the token straight from payer to merchant and emits InvoicePaid, so it never holds funds.
+ * NEXT_PUBLIC_CLEARMARK_PAY_USDC / _EURC point a token at a different deployment, and
+ * NEXT_PUBLIC_CLEARMARK_PAY=off sends every payment through the Memo contract instead.
+ */
+const payOff = process.env.NEXT_PUBLIC_CLEARMARK_PAY?.trim() === "off";
+const payUsdc = process.env.NEXT_PUBLIC_CLEARMARK_PAY_USDC?.trim();
+const payEurc = process.env.NEXT_PUBLIC_CLEARMARK_PAY_EURC?.trim();
+export const CLEARMARK_PAY: Record<Token, Hex | null> = payOff
+  ? { USDC: null, EURC: null }
+  : {
+      USDC: (payUsdc || "0xEb7355de3d37D1130d0B3e8Ca2cA63fE4Ffdaf0b") as Hex,
+      EURC: (payEurc || "0x5de9f147cFC0406d1F23B3a2EEDfC8cF133dfDe8") as Hex,
+    };
 
 /** Multicall3's aggregate3, as Arc's Multicall3From publishes it (nonpayable, no value forwarding). */
 export const batcherAbi = parseAbi([
@@ -165,13 +174,16 @@ export function extractTransfers(logs: Log[], txHash: Hex): ExtractedTransfer[] 
     }
   }
   const paid: { token: string; payer: string; merchant: string; amount: bigint; invoiceId: Hex; used: boolean }[] = [];
-  const payAddress = CLEARMARK_PAY_ADDRESS?.toLowerCase();
+  const payAddresses = Object.values(CLEARMARK_PAY).filter((a): a is Hex => !!a).map((a) => a.toLowerCase());
   for (const log of logs) {
-    if (!payAddress || log.address.toLowerCase() !== payAddress) continue;
+    if (!payAddresses.includes(log.address.toLowerCase())) continue;
     try {
       const ev = decodeEventLog({ abi: clearmarkPayAbi, data: log.data, topics: log.topics });
       if (ev.eventName === "InvoicePaid") {
         const { token, payer, merchant, amount, invoiceId } = ev.args;
+        // Only the deployment configured for this token counts for it.
+        const t = tokenAt(token);
+        if (!t || CLEARMARK_PAY[t]?.toLowerCase() !== log.address.toLowerCase()) continue;
         paid.push({ token: token.toLowerCase(), payer: payer.toLowerCase(), merchant: merchant.toLowerCase(), amount, invoiceId, used: false });
       }
     } catch {

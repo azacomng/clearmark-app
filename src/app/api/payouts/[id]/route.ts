@@ -26,7 +26,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       await write((db) => {
         const p = db.payouts?.[id];
         if (!p || p.merchant !== m) throw new LedgerError("Payout not found", 404);
-        if (p.source !== "demo") throw new LedgerError("This payout is for real testnet payments. Send it from your wallet.");
+        if (p.source !== "demo") throw new LedgerError("This payout is for real payments. Send it from your wallet.");
         return markPayoutSent(db, m, id, {
           txHash: demoTxHash(id),
           blockNumber: BigInt(Date.now()),

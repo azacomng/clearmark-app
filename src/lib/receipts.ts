@@ -9,7 +9,7 @@ import { currencyOf, needsFx, rateLine, tokenOf, toInvoiceUnits, unitOf } from "
 import type { Db, Hex } from "./types";
 
 export function approvalMessage(r: { id: string; amount: string; to: string }) {
-  return `Approve Clearmark refund ${r.id}\nAmount: ${fmt(r.amount)} USDC\nTo: ${r.to}\nNetwork: Arc Testnet`;
+  return `Approve Clearmark refund ${r.id}\nAmount: ${fmt(r.amount)} USDC\nTo: ${r.to}\nNetwork: Arc`;
 }
 
 export interface ReceiptData {

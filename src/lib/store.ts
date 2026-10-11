@@ -1,5 +1,5 @@
 // v1 storage: a single JSON file, written atomically, with an in-process write lock.
-// Good enough for a testnet pilot on one server. The rest of the app only talks to
+// Good enough for a pilot on one server. The rest of the app only talks to
 // read() and write(), so swapping in Postgres later touches this file alone.
 
 import "server-only";
@@ -15,9 +15,11 @@ import type { Db } from "./types";
 //     data is temporary.
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-const REDIS_KEY = process.env.CLEARMARK_REDIS_KEY || "clearmark:db";
+// Mainnet data lives under its own key, so nothing from the earlier testnet pilot (kept under
+// "clearmark:db") mixes with real payments.
+const REDIS_KEY = process.env.CLEARMARK_REDIS_KEY || "clearmark:mainnet:db";
 const FILE = path.resolve(
-  /*turbopackIgnore: true*/ process.env.CLEARMARK_DATA_FILE || (process.env.VERCEL ? "/tmp/clearmark.json" : "./data/clearmark.json"),
+  /*turbopackIgnore: true*/ process.env.CLEARMARK_DATA_FILE || (process.env.VERCEL ? "/tmp/clearmark-mainnet.json" : "./data/clearmark-mainnet.json"),
 );
 
 const empty = (): Db => ({ version: 1, merchants: {}, invoices: {}, payments: {}, refunds: {}, nonces: {} });
